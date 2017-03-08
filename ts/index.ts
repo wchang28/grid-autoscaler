@@ -2,27 +2,19 @@ import * as events from "events";
 import * as _ from 'lodash';
 import * as asg from 'autoscalable-grid';
 
-export type WorkerKey = string;
+export type WorkerKey = string; // worker key used to terminate/launch worker
 
-export interface IGridAutoScaler {
-    readonly Scaling: boolean;
-    Enabled: boolean;
-    readonly HasWorkersCap: boolean;
-    MaxAllowedWorkers: number;
-    readonly LaunchingWorkers: WorkerKey[];
-    readonly TerminatingWorkers: WorkerKey[];
+export interface IWorkersLaunchRequest {
+    NumInstance: number;
+    Hint?: any;
 }
 
 export interface IAutoScalerImplementation {
-    TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;    // translate from WorkerIdentifier to WorkerKey
-    ComputeWorkerDebt: (state: asg.IAutoScalableState) => Promise<number>;  // calculate the number of additional workers desired given the current state of the autoscalable
-    Terminator: (workerKeys: WorkerKey[]) => Promise<any>;              // actual implementation of terminating the workers
-    Launcher: (numInstance: number) => Promise<WorkerKey[]>;            // actual implementation of launching new workers
-    readonly JSON: Promise<any>;                                        // get the JSON representation of the implementation
-}
-
-export interface IGridAutoScalerWithImpl extends IGridAutoScaler {
-    ImplementationJSON: any;
+    TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;     // translate from WorkerIdentifier to WorkerKey
+    ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;  // calculate the number of additional workers desired given the current state of the autoscalable
+    Launcher: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;                       // actual implementation of launching new workers
+    Terminator: (workerKeys: WorkerKey[]) => Promise<any>;                                          // actual implementation of terminating the workers
+    readonly ConfigUrl:  Promise<string>;                                                           // configuration url for the actual implementation
 }
 
 export interface Options {
@@ -42,6 +34,29 @@ interface TimerFunction {
     () : void
 }
 
+export interface IGridAutoScalerJSON {
+    Scaling: boolean;
+    Enabled: boolean;
+    HasWorkersCap: boolean;
+    MaxAllowedWorkers: number;
+    LaunchingWorkers: WorkerKey[];
+    TerminatingWorkers: WorkerKey[];
+}
+
+interface IGridAutoScaler {
+    readonly Scaling: Promise<boolean>;
+    readonly Enabled: Promise<boolean>;
+    readonly HasWorkersCap: Promise<boolean>;
+    enable(): Promise<any>;
+    disable(): Promise<any>;
+    readonly MaxAllowedWorkers: Promise<number>;
+    setMaxAllowedWorkers(value: number): Promise<any>;
+    readonly LaunchingWorkers: Promise<WorkerKey[]>;
+    readonly TerminatingWorkers: Promise<WorkerKey[]>;
+    readonly JSON: Promise<IGridAutoScalerJSON>;
+    readonly ImplementationConfigUrl: Promise<string>;
+}
+
 // the class supported the following events:
 // 1. error (error: any)
 // 2. change
@@ -49,13 +64,13 @@ interface TimerFunction {
 // 4. up-scaling (numInstances: number)
 // 5. down-scaled (workerKeys: WorkerKey[])
 // 6. up-scaled (workerKeys: WorkerKey[])
-export class GridAutoScaler extends events.EventEmitter implements IGridAutoScaler {
+export class GridAutoScaler extends events.EventEmitter {
     private options: Options = null;
     private __enabled: boolean;
     private __MaxAllowedWorkers: number;
     private __terminatingWorkers: {[workerKey: string]: boolean};
     private __launchingWorkers: {[workerKey: string]: boolean};
-    constructor(private scalable: asg.IAutoScalableGrid, private implementation: IAutoScalerImplementation, options?: Options) {
+    constructor(private scalableGrid: asg.IAutoScalableGrid, private implementation: IAutoScalerImplementation, options?: Options) {
         super();
         this.__terminatingWorkers = null;
         this.__launchingWorkers = null;
@@ -132,23 +147,23 @@ export class GridAutoScaler extends events.EventEmitter implements IGridAutoScal
                 return this.getTerminatePromise(toBeTerminatedWorkers);
             } else  // no worker is idle long enough => nothing to terminate
                 return Promise.resolve<any>(null);
-        } else  // has task(s) in queue => nothing to terminate
+        } else  // queue is not empty => nothing to terminate
             return Promise.resolve<any>(null);
     }
 
     private getUpScalingWithTaskDebtPromise(state: asg.IAutoScalableState) : Promise<WorkerKey[]> {
         return new Promise<WorkerKey[]>((resolve:(value: WorkerKey[]) => void, reject: (err: any) => void) => {
-            this.implementation.ComputeWorkerDebt(state)    // compute the number of additional workers desired
-            .then((additionalWorkersDesired: number) => {
+            this.implementation.ComputeWorkersLaunchRequest(state)    // compute the number of additional workers desired
+            .then((launchRequest: IWorkersLaunchRequest) => {
                 let numWorkersToLaunch = 0;
                 if (this.HasWorkersCap) {
                     let workersAllowance = Math.max(this.MaxAllowedWorkers - state.WorkerStates.length, 0);    // number of workers stlll allowed to be launched under the cap
-                    numWorkersToLaunch = Math.min(additionalWorkersDesired, workersAllowance);
+                    numWorkersToLaunch = Math.min(launchRequest.NumInstance, workersAllowance);
                 } else    // no workers cap
-                    numWorkersToLaunch = additionalWorkersDesired;
+                    numWorkersToLaunch = launchRequest.NumInstance;
                 if (numWorkersToLaunch > 0) {
                     this.emit('up-scaling', numWorkersToLaunch);
-                    this.implementation.Launcher(numWorkersToLaunch)
+                    this.implementation.Launcher({NumInstance: numWorkersToLaunch, Hint: launchRequest.Hint})
                     .then((workerKeys: WorkerKey[]) => {
                         resolve(workerKeys);
                     }).catch((err: any) => {
@@ -165,9 +180,9 @@ export class GridAutoScaler extends events.EventEmitter implements IGridAutoScal
     // up-scaling logic
     private getUpScalingPromise(state: asg.IAutoScalableState) : Promise<WorkerKey[]> {
         if (!state.QueueEmpty) {  // queue is not empty
-            if (state.TaskDebt > 0)  // has debt in task
+            if (state.CPUDebt > 0)  // has cpu shortage
                 return this.getUpScalingWithTaskDebtPromise(state);
-            else  // no debt in task => nothing to launch
+            else  // no cpu shortage => nothing to launch
                 return Promise.resolve<any>(null);
         } else  // no task in queue => nothing to launch
             return Promise.resolve<any>(null);
@@ -222,7 +237,7 @@ export class GridAutoScaler extends events.EventEmitter implements IGridAutoScal
     private get AutoScalingPromise() : Promise<boolean> {
         return new Promise<boolean>((resolve:(value: boolean) => void, reject: (err: any) => void) => {
             let state: asg.IAutoScalableState = null;
-            this.scalable.CurrentState  // get the current state of the scalable
+            this.scalableGrid.CurrentState  // get the current state of the scalable
             .then((st: asg.IAutoScalableState) => {
                 state = st;
                 return this.feedLastestWorkerStates(state.WorkerStates);
@@ -274,9 +289,9 @@ export class GridAutoScaler extends events.EventEmitter implements IGridAutoScal
         return func.bind(this);
     }
 
-    public get ImplementationJSON(): Promise<any> {return this.implementation.JSON;} 
+    get ImplementationConfigUrl(): Promise<string> {return this.implementation.ConfigUrl;}
 
-    toJSON() : IGridAutoScaler {
+    toJSON() : IGridAutoScalerJSON {
         return {
             Enabled: this.Enabled
             ,Scaling: this.Scaling

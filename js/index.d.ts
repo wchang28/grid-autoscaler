@@ -3,23 +3,16 @@
 import * as events from "events";
 import * as asg from 'autoscalable-grid';
 export declare type WorkerKey = string;
-export interface IGridAutoScaler {
-    readonly Scaling: boolean;
-    Enabled: boolean;
-    readonly HasWorkersCap: boolean;
-    MaxAllowedWorkers: number;
-    readonly LaunchingWorkers: WorkerKey[];
-    readonly TerminatingWorkers: WorkerKey[];
+export interface IWorkersLaunchRequest {
+    NumInstance: number;
+    Hint?: any;
 }
 export interface IAutoScalerImplementation {
     TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;
-    ComputeWorkerDebt: (state: asg.IAutoScalableState) => Promise<number>;
+    ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;
+    Launcher: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;
     Terminator: (workerKeys: WorkerKey[]) => Promise<any>;
-    Launcher: (numInstance: number) => Promise<WorkerKey[]>;
-    readonly JSON: Promise<any>;
-}
-export interface IGridAutoScalerWithImpl extends IGridAutoScaler {
-    ImplementationJSON: any;
+    readonly ConfigUrl: Promise<string>;
 }
 export interface Options {
     EnabledAtStart?: boolean;
@@ -27,15 +20,23 @@ export interface Options {
     PollingIntervalMS?: number;
     TerminateWorkerAfterMinutesIdle?: number;
 }
-export declare class GridAutoScaler extends events.EventEmitter implements IGridAutoScaler {
-    private scalable;
+export interface IGridAutoScalerJSON {
+    Scaling: boolean;
+    Enabled: boolean;
+    HasWorkersCap: boolean;
+    MaxAllowedWorkers: number;
+    LaunchingWorkers: WorkerKey[];
+    TerminatingWorkers: WorkerKey[];
+}
+export declare class GridAutoScaler extends events.EventEmitter {
+    private scalableGrid;
     private implementation;
     private options;
     private __enabled;
     private __MaxAllowedWorkers;
     private __terminatingWorkers;
     private __launchingWorkers;
-    constructor(scalable: asg.IAutoScalableGrid, implementation: IAutoScalerImplementation, options?: Options);
+    constructor(scalableGrid: asg.IAutoScalableGrid, implementation: IAutoScalerImplementation, options?: Options);
     readonly Scaling: boolean;
     readonly LaunchingWorkers: WorkerKey[];
     readonly TerminatingWorkers: WorkerKey[];
@@ -49,6 +50,6 @@ export declare class GridAutoScaler extends events.EventEmitter implements IGrid
     private feedLastestWorkerStates(workerStates);
     private readonly AutoScalingPromise;
     private readonly TimerFunction;
-    readonly ImplementationJSON: Promise<any>;
-    toJSON(): IGridAutoScaler;
+    readonly ImplementationConfigUrl: Promise<string>;
+    toJSON(): IGridAutoScalerJSON;
 }

@@ -20,9 +20,9 @@ var defaultOptions = {
 // 6. up-scaled (workerKeys: WorkerKey[])
 var GridAutoScaler = (function (_super) {
     __extends(GridAutoScaler, _super);
-    function GridAutoScaler(scalable, implementation, options) {
+    function GridAutoScaler(scalableGrid, implementation, options) {
         var _this = _super.call(this) || this;
-        _this.scalable = scalable;
+        _this.scalableGrid = scalableGrid;
         _this.implementation = implementation;
         _this.options = null;
         _this.__terminatingWorkers = null;
@@ -134,18 +134,18 @@ var GridAutoScaler = (function (_super) {
     GridAutoScaler.prototype.getUpScalingWithTaskDebtPromise = function (state) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            _this.implementation.ComputeWorkerDebt(state) // compute the number of additional workers desired
-                .then(function (additionalWorkersDesired) {
+            _this.implementation.ComputeWorkersLaunchRequest(state) // compute the number of additional workers desired
+                .then(function (launchRequest) {
                 var numWorkersToLaunch = 0;
                 if (_this.HasWorkersCap) {
                     var workersAllowance = Math.max(_this.MaxAllowedWorkers - state.WorkerStates.length, 0); // number of workers stlll allowed to be launched under the cap
-                    numWorkersToLaunch = Math.min(additionalWorkersDesired, workersAllowance);
+                    numWorkersToLaunch = Math.min(launchRequest.NumInstance, workersAllowance);
                 }
                 else
-                    numWorkersToLaunch = additionalWorkersDesired;
+                    numWorkersToLaunch = launchRequest.NumInstance;
                 if (numWorkersToLaunch > 0) {
                     _this.emit('up-scaling', numWorkersToLaunch);
-                    _this.implementation.Launcher(numWorkersToLaunch)
+                    _this.implementation.Launcher({ NumInstance: numWorkersToLaunch, Hint: launchRequest.Hint })
                         .then(function (workerKeys) {
                         resolve(workerKeys);
                     }).catch(function (err) {
@@ -162,7 +162,7 @@ var GridAutoScaler = (function (_super) {
     // up-scaling logic
     GridAutoScaler.prototype.getUpScalingPromise = function (state) {
         if (!state.QueueEmpty) {
-            if (state.TaskDebt > 0)
+            if (state.CPUDebt > 0)
                 return this.getUpScalingWithTaskDebtPromise(state);
             else
                 return Promise.resolve(null);
@@ -219,7 +219,7 @@ var GridAutoScaler = (function (_super) {
             var _this = this;
             return new Promise(function (resolve, reject) {
                 var state = null;
-                _this.scalable.CurrentState // get the current state of the scalable
+                _this.scalableGrid.CurrentState // get the current state of the scalable
                     .then(function (st) {
                     state = st;
                     return _this.feedLastestWorkerStates(state.WorkerStates);
@@ -277,8 +277,8 @@ var GridAutoScaler = (function (_super) {
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(GridAutoScaler.prototype, "ImplementationJSON", {
-        get: function () { return this.implementation.JSON; },
+    Object.defineProperty(GridAutoScaler.prototype, "ImplementationConfigUrl", {
+        get: function () { return this.implementation.ConfigUrl; },
         enumerable: true,
         configurable: true
     });
