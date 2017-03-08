@@ -10,8 +10,8 @@ export interface IWorkersLaunchRequest {
 export interface IAutoScalerImplementation {
     TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;
     ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;
-    Launcher: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;
-    Terminator: (workerKeys: WorkerKey[]) => Promise<any>;
+    LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;
+    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<any>;
     readonly ConfigUrl: Promise<string>;
 }
 export interface Options {

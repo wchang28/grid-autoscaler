@@ -12,8 +12,8 @@ export interface IWorkersLaunchRequest {
 export interface IAutoScalerImplementation {
     TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;     // translate from WorkerIdentifier to WorkerKey
     ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;  // calculate the number of additional workers desired given the current state of the autoscalable
-    Launcher: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;                       // actual implementation of launching new workers
-    Terminator: (workerKeys: WorkerKey[]) => Promise<any>;                                          // actual implementation of terminating the workers
+    LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;                       // actual implementation of launching new workers
+    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<any>;                                          // actual implementation of terminating the workers
     readonly ConfigUrl:  Promise<string>;                                                           // configuration url for the actual implementation
 }
 
@@ -122,7 +122,7 @@ export class GridAutoScaler extends events.EventEmitter {
             this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers)
             .then((keys: WorkerKey[]) => {
                 workerKeys = keys;
-                return this.implementation.Terminator(workerKeys);
+                return this.implementation.TerminateInstances(workerKeys);
             }).then(() => {
                 resolve(workerKeys)
             }).catch((err: any) => {
@@ -163,7 +163,7 @@ export class GridAutoScaler extends events.EventEmitter {
                     numWorkersToLaunch = launchRequest.NumInstance;
                 if (numWorkersToLaunch > 0) {
                     this.emit('up-scaling', numWorkersToLaunch);
-                    this.implementation.Launcher({NumInstance: numWorkersToLaunch, Hint: launchRequest.Hint})
+                    this.implementation.LaunchInstances({NumInstance: numWorkersToLaunch, Hint: launchRequest.Hint})
                     .then((workerKeys: WorkerKey[]) => {
                         resolve(workerKeys);
                     }).catch((err: any) => {

@@ -101,7 +101,7 @@ var GridAutoScaler = (function (_super) {
             _this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers)
                 .then(function (keys) {
                 workerKeys = keys;
-                return _this.implementation.Terminator(workerKeys);
+                return _this.implementation.TerminateInstances(workerKeys);
             }).then(function () {
                 resolve(workerKeys);
             }).catch(function (err) {
@@ -145,7 +145,7 @@ var GridAutoScaler = (function (_super) {
                     numWorkersToLaunch = launchRequest.NumInstance;
                 if (numWorkersToLaunch > 0) {
                     _this.emit('up-scaling', numWorkersToLaunch);
-                    _this.implementation.Launcher({ NumInstance: numWorkersToLaunch, Hint: launchRequest.Hint })
+                    _this.implementation.LaunchInstances({ NumInstance: numWorkersToLaunch, Hint: launchRequest.Hint })
                         .then(function (workerKeys) {
                         resolve(workerKeys);
                     }).catch(function (err) {
