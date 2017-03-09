@@ -13,12 +13,13 @@ var defaultOptions = {
 };
 // the class supported the following events:
 // 1. polling
-// 2. error (error: any)
-// 3. change
-// 4. down-scaling (workerIdentifiers: WorkerIdentifier[])
-// 5. up-scaling (numInstances: number)
-// 6. down-scaled (workerKeys: WorkerKey[])
-// 7. up-scaled (workerKeys: WorkerKey[])
+// 2. scalable-state (IAutoScalableState)
+// 3. error (error: any)
+// 4. change
+// 5. down-scaling (workers: IWorker[])
+// 6. up-scaling (numInstances: number)
+// 7. down-scaled (workerKeys: WorkerKey[])
+// 8. up-scaled (workerKeys: WorkerKey[])
 var GridAutoScaler = (function (_super) {
     __extends(GridAutoScaler, _super);
     function GridAutoScaler(scalableGrid, implementation, options) {
@@ -216,6 +217,7 @@ var GridAutoScaler = (function (_super) {
                 _this.scalableGrid.getCurrentState() // get the current state of the scalable
                     .then(function (st) {
                     state = st;
+                    _this.emit('scalable-state', state);
                     return _this.feedLastestWorkerStates(state.WorkerStates);
                 }).then(function () {
                     if (_this.Enabled && !_this.Scaling)

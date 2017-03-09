@@ -59,12 +59,13 @@ export interface IGridAutoScaler {
 
 // the class supported the following events:
 // 1. polling
-// 2. error (error: any)
-// 3. change
-// 4. down-scaling (workerIdentifiers: WorkerIdentifier[])
-// 5. up-scaling (numInstances: number)
-// 6. down-scaled (workerKeys: WorkerKey[])
-// 7. up-scaled (workerKeys: WorkerKey[])
+// 2. scalable-state (IAutoScalableState)
+// 3. error (error: any)
+// 4. change
+// 5. down-scaling (workers: IWorker[])
+// 6. up-scaling (numInstances: number)
+// 7. down-scaled (workerKeys: WorkerKey[])
+// 8. up-scaled (workerKeys: WorkerKey[])
 export class GridAutoScaler extends events.EventEmitter {
     private options: Options = null;
     private __enabled: boolean;
@@ -236,6 +237,7 @@ export class GridAutoScaler extends events.EventEmitter {
             this.scalableGrid.getCurrentState()  // get the current state of the scalable
             .then((st: asg.IAutoScalableState) => {
                 state = st;
+                this.emit('scalable-state', state);
                 return this.feedLastestWorkerStates(state.WorkerStates);
             }).then(() => {
                 if (this.Enabled && !this.Scaling)  // enabled and currently not performing scaling
