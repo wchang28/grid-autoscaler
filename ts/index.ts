@@ -2,7 +2,7 @@ import * as events from "events";
 import * as _ from 'lodash';
 import * as asg from 'autoscalable-grid';
 
-export type WorkerKey = string; // worker key used to terminate/launch worker
+export type WorkerKey = string; // worker key used to terminate/launch worker, actual implementation decide what this is
 
 export interface IWorkersLaunchRequest {
     NumInstance: number;
@@ -10,10 +10,10 @@ export interface IWorkersLaunchRequest {
 }
 
 export interface IAutoScalerImplementation {
-    TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;     // translate from WorkerIdentifier to WorkerKey
+    TranslateToWorkerKeys: (workers: asg.IWorker[]) => Promise<WorkerKey[]>;     // translate from IWorker to WorkerKey
     ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;  // calculate the number of additional workers desired given the current state of the autoscalable
     LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;                // actual implementation of launching new workers
-    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<WorkerKey[]>;                          // actual implementation of terminating the workers
+    TerminateInstances: (workers: asg.IWorker[]) => Promise<WorkerKey[]>;                          // actual implementation of terminating the workers
     getConfigUrl:  () => Promise<string>;                                                           // configuration url for the actual implementation
 }
 
@@ -116,33 +116,30 @@ export class GridAutoScaler extends events.EventEmitter {
         }
     }
 
-    private getTerminatePromise(toBeTerminatedWorkers: asg.WorkerIdentifier[]) : Promise<WorkerKey[]> {
-        return new Promise<WorkerKey[]>((resolve:(value: WorkerKey[]) => void, reject: (err: any) => void) => {
-            this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers)
-            .then((workerKeys: WorkerKey[]) => {
-                return this.implementation.TerminateInstances(workerKeys);
-            }).then((workerKeys: WorkerKey[]) => {
-                resolve(workerKeys)
-            }).catch((err: any) => {
-                reject(err);
-            });
-        });
+    private getWorkerFromState(state: asg.IWorkerState) : asg.IWorker {
+        return {
+            Id: state.Id
+            ,Name: state.Name
+            ,RemoteAddress: state.RemoteAddress
+            ,RemotePort: state.RemotePort
+        };
     }
+
     // down-scaling logic
     private getDownScalingPromise(state: asg.IAutoScalableState) : Promise<WorkerKey[]> {
         if (state.QueueEmpty) {   // queue is empty
-            let toBeTerminatedWorkers: asg.WorkerIdentifier[]  = [];
+            let toBeTerminatedWorkers: asg.IWorker[]  = [];
             for (let i in state.WorkerStates) {
                 let ws = state.WorkerStates[i];
                 if (!ws.Busy && typeof ws.LastIdleTime === 'number') {
                     let elapseMS = state.CurrentTime - ws.LastIdleTime;
                     if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000)
-                        toBeTerminatedWorkers.push({Id: ws.Id, Name: ws.Name});
+                        toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
                 }
             }
             if (toBeTerminatedWorkers.length > 0) {
                 this.emit('down-scaling', toBeTerminatedWorkers);
-                return this.getTerminatePromise(toBeTerminatedWorkers);
+                return this.implementation.TerminateInstances(toBeTerminatedWorkers);
             } else  // no worker is idle long enough => nothing to terminate
                 return Promise.resolve<any>(null);
         } else  // queue is not empty => nothing to terminate
@@ -188,12 +185,12 @@ export class GridAutoScaler extends events.EventEmitter {
 
     private feedLastestWorkerStates(workerStates: asg.IWorkerState[]) : Promise<any> {
         return new Promise<any>((resolve:(value: any) => void, reject: (err: any) => void) => {
-            let identifiers: asg.WorkerIdentifier[] = [];
+            let workers: asg.IWorker[] = [];
             for (let i in workerStates) {
-                let ws = workerStates[i]
-                identifiers.push({Id: ws.Id, Name: ws.Name});
+                let ws = workerStates[i];
+                workers.push(this.getWorkerFromState(ws));
             }
-            this.implementation.TranslateToWorkerKeys(identifiers)
+            this.implementation.TranslateToWorkerKeys(workers)
             .then((workerKeys: WorkerKey[]) => {
                 let currentWorkers: {[workerKey: string] : boolean} = {};
                 for (let i in workerKeys) {

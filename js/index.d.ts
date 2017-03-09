@@ -8,10 +8,10 @@ export interface IWorkersLaunchRequest {
     Hint?: any;
 }
 export interface IAutoScalerImplementation {
-    TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;
+    TranslateToWorkerKeys: (workers: asg.IWorker[]) => Promise<WorkerKey[]>;
     ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;
     LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;
-    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<WorkerKey[]>;
+    TerminateInstances: (workers: asg.IWorker[]) => Promise<WorkerKey[]>;
     getConfigUrl: () => Promise<string>;
 }
 export interface Options {
@@ -56,7 +56,7 @@ export declare class GridAutoScaler extends events.EventEmitter {
     Enabled: boolean;
     readonly HasWorkersCap: boolean;
     MaxAllowedWorkers: number;
-    private getTerminatePromise(toBeTerminatedWorkers);
+    private getWorkerFromState(state);
     private getDownScalingPromise(state);
     private getUpScalingWithTaskDebtPromise(state);
     private getUpScalingPromise(state);

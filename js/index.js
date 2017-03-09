@@ -94,18 +94,13 @@ var GridAutoScaler = (function (_super) {
         enumerable: true,
         configurable: true
     });
-    GridAutoScaler.prototype.getTerminatePromise = function (toBeTerminatedWorkers) {
-        var _this = this;
-        return new Promise(function (resolve, reject) {
-            _this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers)
-                .then(function (workerKeys) {
-                return _this.implementation.TerminateInstances(workerKeys);
-            }).then(function (workerKeys) {
-                resolve(workerKeys);
-            }).catch(function (err) {
-                reject(err);
-            });
-        });
+    GridAutoScaler.prototype.getWorkerFromState = function (state) {
+        return {
+            Id: state.Id,
+            Name: state.Name,
+            RemoteAddress: state.RemoteAddress,
+            RemotePort: state.RemotePort
+        };
     };
     // down-scaling logic
     GridAutoScaler.prototype.getDownScalingPromise = function (state) {
@@ -116,12 +111,12 @@ var GridAutoScaler = (function (_super) {
                 if (!ws.Busy && typeof ws.LastIdleTime === 'number') {
                     var elapseMS = state.CurrentTime - ws.LastIdleTime;
                     if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000)
-                        toBeTerminatedWorkers.push({ Id: ws.Id, Name: ws.Name });
+                        toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
                 }
             }
             if (toBeTerminatedWorkers.length > 0) {
                 this.emit('down-scaling', toBeTerminatedWorkers);
-                return this.getTerminatePromise(toBeTerminatedWorkers);
+                return this.implementation.TerminateInstances(toBeTerminatedWorkers);
             }
             else
                 return Promise.resolve(null);
@@ -171,12 +166,12 @@ var GridAutoScaler = (function (_super) {
     GridAutoScaler.prototype.feedLastestWorkerStates = function (workerStates) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var identifiers = [];
+            var workers = [];
             for (var i in workerStates) {
                 var ws = workerStates[i];
-                identifiers.push({ Id: ws.Id, Name: ws.Name });
+                workers.push(_this.getWorkerFromState(ws));
             }
-            _this.implementation.TranslateToWorkerKeys(identifiers)
+            _this.implementation.TranslateToWorkerKeys(workers)
                 .then(function (workerKeys) {
                 var currentWorkers = {};
                 for (var i in workerKeys) {
@@ -185,9 +180,9 @@ var GridAutoScaler = (function (_super) {
                 }
                 var oldScaling = _this.Scaling;
                 if (_this.__terminatingWorkers) {
-                    var workers = _this.TerminatingWorkers;
-                    for (var i in workers) {
-                        var workerKey = workers[i];
+                    var workers_1 = _this.TerminatingWorkers;
+                    for (var i in workers_1) {
+                        var workerKey = workers_1[i];
                         if (!currentWorkers[workerKey])
                             delete _this.__terminatingWorkers[workerKey];
                     }
@@ -195,9 +190,9 @@ var GridAutoScaler = (function (_super) {
                         _this.__terminatingWorkers = null;
                 }
                 if (_this.__launchingWorkers) {
-                    var workers = _this.LaunchingWorkers;
-                    for (var i in workers) {
-                        var workerKey = workers[i];
+                    var workers_2 = _this.LaunchingWorkers;
+                    for (var i in workers_2) {
+                        var workerKey = workers_2[i];
                         if (currentWorkers[workerKey])
                             delete _this.__launchingWorkers[workerKey];
                     }
