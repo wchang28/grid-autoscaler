@@ -66,6 +66,8 @@ export interface IGridAutoScaler {
 // 6. up-scaling (numInstances: number)
 // 7. down-scaled (workerKeys: WorkerKey[])
 // 8. up-scaled (workerKeys: WorkerKey[])
+// 9. workers-terminated (workerKeys: WorkerKey[])
+// 10. workers-launched (workerKeys: WorkerKey[])
 export class GridAutoScaler extends events.EventEmitter {
     private options: Options = null;
     private __enabled: boolean;
@@ -203,21 +205,29 @@ export class GridAutoScaler extends events.EventEmitter {
 
                 if (this.__terminatingWorkers) {
                     let workers = this.TerminatingWorkers;
+                    let terminatedWorkers : WorkerKey[] = [];
                     for (let i in workers) {    // check each terminating worker
                         let workerKey = workers[i];
-                        if (!currentWorkers[workerKey]) // worker is indeed terminated
+                        if (!currentWorkers[workerKey]) {// worker is indeed terminated
                             delete this.__terminatingWorkers[workerKey];
+                            terminatedWorkers.push(workerKey);
+                        }
                     }
+                    if (terminatedWorkers.length > 0) this.emit('workers-terminated', terminatedWorkers);
                     if (_.isEmpty(this.__terminatingWorkers)) this.__terminatingWorkers = null;
                 }
 
                 if (this.__launchingWorkers) {
                     let workers = this.LaunchingWorkers;
+                    let launchedWorkers : WorkerKey[] = [];
                     for (let i in workers) {    // check each launching worker
                         let workerKey = workers[i];
-                        if (currentWorkers[workerKey]) // worker is indeed launched
+                        if (currentWorkers[workerKey]) {    // worker is indeed launched
                             delete this.__launchingWorkers[workerKey];
+                            launchedWorkers.push(workerKey);
+                        }
                     }
+                    if (launchedWorkers.length > 0) this.emit('workers-launched', launchedWorkers);
                     if (_.isEmpty(this.__launchingWorkers)) this.__launchingWorkers = null;
                 }
 

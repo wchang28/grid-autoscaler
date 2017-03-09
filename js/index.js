@@ -20,6 +20,8 @@ var defaultOptions = {
 // 6. up-scaling (numInstances: number)
 // 7. down-scaled (workerKeys: WorkerKey[])
 // 8. up-scaled (workerKeys: WorkerKey[])
+// 9. workers-terminated (workerKeys: WorkerKey[])
+// 10. workers-launched (workerKeys: WorkerKey[])
 var GridAutoScaler = (function (_super) {
     __extends(GridAutoScaler, _super);
     function GridAutoScaler(scalableGrid, implementation, options) {
@@ -183,21 +185,31 @@ var GridAutoScaler = (function (_super) {
                 var oldScaling = _this.Scaling;
                 if (_this.__terminatingWorkers) {
                     var workers_1 = _this.TerminatingWorkers;
+                    var terminatedWorkers = [];
                     for (var i in workers_1) {
                         var workerKey = workers_1[i];
-                        if (!currentWorkers[workerKey])
+                        if (!currentWorkers[workerKey]) {
                             delete _this.__terminatingWorkers[workerKey];
+                            terminatedWorkers.push(workerKey);
+                        }
                     }
+                    if (terminatedWorkers.length > 0)
+                        _this.emit('workers-terminated', terminatedWorkers);
                     if (_.isEmpty(_this.__terminatingWorkers))
                         _this.__terminatingWorkers = null;
                 }
                 if (_this.__launchingWorkers) {
                     var workers_2 = _this.LaunchingWorkers;
+                    var launchedWorkers = [];
                     for (var i in workers_2) {
                         var workerKey = workers_2[i];
-                        if (currentWorkers[workerKey])
+                        if (currentWorkers[workerKey]) {
                             delete _this.__launchingWorkers[workerKey];
+                            launchedWorkers.push(workerKey);
+                        }
                     }
+                    if (launchedWorkers.length > 0)
+                        _this.emit('workers-launched', launchedWorkers);
                     if (_.isEmpty(_this.__launchingWorkers))
                         _this.__launchingWorkers = null;
                 }
