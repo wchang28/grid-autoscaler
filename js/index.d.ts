@@ -11,8 +11,8 @@ export interface IAutoScalerImplementation {
     TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;
     ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;
     LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;
-    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<any>;
-    readonly ConfigUrl: Promise<string>;
+    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<WorkerKey[]>;
+    getConfigUrl: () => Promise<string>;
 }
 export interface Options {
     EnabledAtStart?: boolean;
@@ -27,6 +27,19 @@ export interface IGridAutoScalerJSON {
     MaxAllowedWorkers: number;
     LaunchingWorkers: WorkerKey[];
     TerminatingWorkers: WorkerKey[];
+}
+export interface IGridAutoScaler {
+    isScaling: () => Promise<boolean>;
+    isEnabled: () => Promise<boolean>;
+    hasWorkersCap: () => Promise<boolean>;
+    enable: () => Promise<any>;
+    disable: () => Promise<any>;
+    getMaxAllowedWorkers: () => Promise<number>;
+    setMaxAllowedWorkers: (value: number) => Promise<any>;
+    getLaunchingWorkers: () => Promise<WorkerKey[]>;
+    getTerminatingWorkers: () => Promise<WorkerKey[]>;
+    getJSON: () => Promise<IGridAutoScalerJSON>;
+    getImplementationConfigUrl: () => Promise<string>;
 }
 export declare class GridAutoScaler extends events.EventEmitter {
     private scalableGrid;

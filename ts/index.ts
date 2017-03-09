@@ -12,9 +12,9 @@ export interface IWorkersLaunchRequest {
 export interface IAutoScalerImplementation {
     TranslateToWorkerKeys: (workerIdentifiers: asg.WorkerIdentifier[]) => Promise<WorkerKey[]>;     // translate from WorkerIdentifier to WorkerKey
     ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;  // calculate the number of additional workers desired given the current state of the autoscalable
-    LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;                       // actual implementation of launching new workers
-    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<any>;                                          // actual implementation of terminating the workers
-    readonly ConfigUrl:  Promise<string>;                                                           // configuration url for the actual implementation
+    LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;                // actual implementation of launching new workers
+    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<WorkerKey[]>;                          // actual implementation of terminating the workers
+    getConfigUrl:  () => Promise<string>;                                                           // configuration url for the actual implementation
 }
 
 export interface Options {
@@ -43,18 +43,18 @@ export interface IGridAutoScalerJSON {
     TerminatingWorkers: WorkerKey[];
 }
 
-interface IGridAutoScaler {
-    readonly Scaling: Promise<boolean>;
-    readonly Enabled: Promise<boolean>;
-    readonly HasWorkersCap: Promise<boolean>;
-    enable(): Promise<any>;
-    disable(): Promise<any>;
-    readonly MaxAllowedWorkers: Promise<number>;
-    setMaxAllowedWorkers(value: number): Promise<any>;
-    readonly LaunchingWorkers: Promise<WorkerKey[]>;
-    readonly TerminatingWorkers: Promise<WorkerKey[]>;
-    readonly JSON: Promise<IGridAutoScalerJSON>;
-    readonly ImplementationConfigUrl: Promise<string>;
+export interface IGridAutoScaler {
+    isScaling: () => Promise<boolean>;
+    isEnabled: () => Promise<boolean>;
+    hasWorkersCap: () => Promise<boolean>;
+    enable: () => Promise<any>;
+    disable: () => Promise<any>;
+    getMaxAllowedWorkers: () => Promise<number>;
+    setMaxAllowedWorkers: (value: number) => Promise<any>;
+    getLaunchingWorkers: () => Promise<WorkerKey[]>;
+    getTerminatingWorkers: () => Promise<WorkerKey[]>;
+    getJSON: () => Promise<IGridAutoScalerJSON>;
+    getImplementationConfigUrl: () => Promise<string>;
 }
 
 // the class supported the following events:
@@ -118,12 +118,10 @@ export class GridAutoScaler extends events.EventEmitter {
 
     private getTerminatePromise(toBeTerminatedWorkers: asg.WorkerIdentifier[]) : Promise<WorkerKey[]> {
         return new Promise<WorkerKey[]>((resolve:(value: WorkerKey[]) => void, reject: (err: any) => void) => {
-            let workerKeys: WorkerKey[] = null;
             this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers)
-            .then((keys: WorkerKey[]) => {
-                workerKeys = keys;
+            .then((workerKeys: WorkerKey[]) => {
                 return this.implementation.TerminateInstances(workerKeys);
-            }).then(() => {
+            }).then((workerKeys: WorkerKey[]) => {
                 resolve(workerKeys)
             }).catch((err: any) => {
                 reject(err);
@@ -237,7 +235,7 @@ export class GridAutoScaler extends events.EventEmitter {
     private get AutoScalingPromise() : Promise<boolean> {
         return new Promise<boolean>((resolve:(value: boolean) => void, reject: (err: any) => void) => {
             let state: asg.IAutoScalableState = null;
-            this.scalableGrid.CurrentState  // get the current state of the scalable
+            this.scalableGrid.getCurrentState()  // get the current state of the scalable
             .then((st: asg.IAutoScalableState) => {
                 state = st;
                 return this.feedLastestWorkerStates(state.WorkerStates);
@@ -249,7 +247,7 @@ export class GridAutoScaler extends events.EventEmitter {
             }).then((value: [WorkerKey[], WorkerKey[]]) => {
                 let oldScaling = this.Scaling;
                 let terminateWorkerKeys = value[0];
-                if (terminateWorkerKeys != null) {
+                if (terminateWorkerKeys != null && terminateWorkerKeys.length > 0) {
                     this.__terminatingWorkers = {};
                     for (let i in terminateWorkerKeys) {
                         let workerKey = terminateWorkerKeys[i];
@@ -258,7 +256,7 @@ export class GridAutoScaler extends events.EventEmitter {
                     this.emit('down-scaled', terminateWorkerKeys);
                 }
                 let launchWorkerKeys = value[1];
-                if (launchWorkerKeys != null) {
+                if (launchWorkerKeys != null && launchWorkerKeys.length > 0) {
                     this.__launchingWorkers = {};
                     for (let i in launchWorkerKeys) {
                         let workerKey = launchWorkerKeys[i];
@@ -289,7 +287,7 @@ export class GridAutoScaler extends events.EventEmitter {
         return func.bind(this);
     }
 
-    get ImplementationConfigUrl(): Promise<string> {return this.implementation.ConfigUrl;}
+    get ImplementationConfigUrl(): Promise<string> {return this.implementation.getConfigUrl();}
 
     toJSON() : IGridAutoScalerJSON {
         return {

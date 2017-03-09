@@ -97,12 +97,10 @@ var GridAutoScaler = (function (_super) {
     GridAutoScaler.prototype.getTerminatePromise = function (toBeTerminatedWorkers) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var workerKeys = null;
             _this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers)
-                .then(function (keys) {
-                workerKeys = keys;
+                .then(function (workerKeys) {
                 return _this.implementation.TerminateInstances(workerKeys);
-            }).then(function () {
+            }).then(function (workerKeys) {
                 resolve(workerKeys);
             }).catch(function (err) {
                 reject(err);
@@ -219,7 +217,7 @@ var GridAutoScaler = (function (_super) {
             var _this = this;
             return new Promise(function (resolve, reject) {
                 var state = null;
-                _this.scalableGrid.CurrentState // get the current state of the scalable
+                _this.scalableGrid.getCurrentState() // get the current state of the scalable
                     .then(function (st) {
                     state = st;
                     return _this.feedLastestWorkerStates(state.WorkerStates);
@@ -231,7 +229,7 @@ var GridAutoScaler = (function (_super) {
                 }).then(function (value) {
                     var oldScaling = _this.Scaling;
                     var terminateWorkerKeys = value[0];
-                    if (terminateWorkerKeys != null) {
+                    if (terminateWorkerKeys != null && terminateWorkerKeys.length > 0) {
                         _this.__terminatingWorkers = {};
                         for (var i in terminateWorkerKeys) {
                             var workerKey = terminateWorkerKeys[i];
@@ -240,7 +238,7 @@ var GridAutoScaler = (function (_super) {
                         _this.emit('down-scaled', terminateWorkerKeys);
                     }
                     var launchWorkerKeys = value[1];
-                    if (launchWorkerKeys != null) {
+                    if (launchWorkerKeys != null && launchWorkerKeys.length > 0) {
                         _this.__launchingWorkers = {};
                         for (var i in launchWorkerKeys) {
                             var workerKey = launchWorkerKeys[i];
@@ -278,7 +276,7 @@ var GridAutoScaler = (function (_super) {
         configurable: true
     });
     Object.defineProperty(GridAutoScaler.prototype, "ImplementationConfigUrl", {
-        get: function () { return this.implementation.ConfigUrl; },
+        get: function () { return this.implementation.getConfigUrl(); },
         enumerable: true,
         configurable: true
     });
