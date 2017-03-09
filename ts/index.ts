@@ -58,12 +58,13 @@ export interface IGridAutoScaler {
 }
 
 // the class supported the following events:
-// 1. error (error: any)
-// 2. change
-// 3. down-scaling (workerIdentifiers: WorkerIdentifier[])
-// 4. up-scaling (numInstances: number)
-// 5. down-scaled (workerKeys: WorkerKey[])
-// 6. up-scaled (workerKeys: WorkerKey[])
+// 1. polling
+// 2. error (error: any)
+// 3. change
+// 4. down-scaling (workerIdentifiers: WorkerIdentifier[])
+// 5. up-scaling (numInstances: number)
+// 6. down-scaled (workerKeys: WorkerKey[])
+// 7. up-scaled (workerKeys: WorkerKey[])
 export class GridAutoScaler extends events.EventEmitter {
     private options: Options = null;
     private __enabled: boolean;
@@ -273,6 +274,7 @@ export class GridAutoScaler extends events.EventEmitter {
 
     private get TimerFunction() : TimerFunction {
         let func = () => {
+            this.emit('polling');
             this.AutoScalingPromise
             .then((scalingTriggered: boolean) => {
                 setTimeout(this.TimerFunction, this.options.PollingIntervalMS);

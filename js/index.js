@@ -12,12 +12,13 @@ var defaultOptions = {
     TerminateWorkerAfterMinutesIdle: 5
 };
 // the class supported the following events:
-// 1. error (error: any)
-// 2. change
-// 3. down-scaling (workerIdentifiers: WorkerIdentifier[])
-// 4. up-scaling (numInstances: number)
-// 5. down-scaled (workerKeys: WorkerKey[])
-// 6. up-scaled (workerKeys: WorkerKey[])
+// 1. polling
+// 2. error (error: any)
+// 3. change
+// 4. down-scaling (workerIdentifiers: WorkerIdentifier[])
+// 5. up-scaling (numInstances: number)
+// 6. down-scaled (workerKeys: WorkerKey[])
+// 7. up-scaled (workerKeys: WorkerKey[])
 var GridAutoScaler = (function (_super) {
     __extends(GridAutoScaler, _super);
     function GridAutoScaler(scalableGrid, implementation, options) {
@@ -257,6 +258,7 @@ var GridAutoScaler = (function (_super) {
         get: function () {
             var _this = this;
             var func = function () {
+                _this.emit('polling');
                 _this.AutoScalingPromise
                     .then(function (scalingTriggered) {
                     setTimeout(_this.TimerFunction, _this.options.PollingIntervalMS);
