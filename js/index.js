@@ -74,7 +74,7 @@ var GridAutoScaler = (function (_super) {
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(GridAutoScaler.prototype, "ScalingState", {
+    Object.defineProperty(GridAutoScaler.prototype, "CurrentScalingState", {
         get: function () {
             if (!this.Scaling)
                 return "Idle";
@@ -336,7 +336,7 @@ var GridAutoScaler = (function (_super) {
         return {
             Enabled: this.Enabled,
             Scaling: this.Scaling,
-            ScalingState: this.ScalingState,
+            CurrentScalingState: this.CurrentScalingState,
             HasMaxWorkersCap: this.HasMaxWorkersCap,
             MaxWorkersCap: this.MaxWorkersCap,
             HasMinWorkersCap: this.HasMinWorkersCap,

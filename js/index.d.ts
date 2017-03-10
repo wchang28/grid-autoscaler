@@ -24,7 +24,7 @@ export interface Options {
 export declare type ScalingState = "Idle" | "ScalingUp" | "ScalingDown";
 export interface IGridAutoScalerJSON {
     Scaling: boolean;
-    ScalingState: ScalingState;
+    CurrentScalingState: ScalingState;
     Enabled: boolean;
     HasMaxWorkersCap: boolean;
     MaxWorkersCap: number;
@@ -35,10 +35,12 @@ export interface IGridAutoScalerJSON {
 }
 export interface IGridAutoScaler {
     isScaling: () => Promise<boolean>;
+    getCurrentScalingState: () => Promise<ScalingState>;
     isEnabled: () => Promise<boolean>;
-    hasWorkersCap: () => Promise<boolean>;
     enable: () => Promise<any>;
     disable: () => Promise<any>;
+    hasMaxWorkersCap: () => Promise<boolean>;
+    hasMixWorkersCap: () => Promise<boolean>;
     getMaxWorkersCap: () => Promise<number>;
     setMaxWorkersCap: (value: number) => Promise<number>;
     getMinWorkersCap: () => Promise<number>;
@@ -61,7 +63,7 @@ export declare class GridAutoScaler extends events.EventEmitter {
     readonly Scaling: boolean;
     readonly LaunchingWorkers: WorkerKey[];
     readonly TerminatingWorkers: WorkerKey[];
-    readonly ScalingState: ScalingState;
+    readonly CurrentScalingState: ScalingState;
     Enabled: boolean;
     readonly HasMaxWorkersCap: boolean;
     MaxWorkersCap: number;
