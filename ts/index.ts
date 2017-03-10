@@ -19,15 +19,18 @@ export interface IAutoScalerImplementation {
 
 export interface Options {
     EnabledAtStart?: boolean;
-    MaxAllowedWorkers?: number;
+    MaxWorkersCap?: number;
+    MinWorkersCap?: number;
     PollingIntervalMS?: number;
     TerminateWorkerAfterMinutesIdle?: number;
 }
 
 let defaultOptions: Options = {
     EnabledAtStart: false
+    ,MaxWorkersCap: null
+    ,MinWorkersCap: null
     ,PollingIntervalMS: 1000
-    ,TerminateWorkerAfterMinutesIdle: 5
+    ,TerminateWorkerAfterMinutesIdle: 1
 };
 
 interface TimerFunction {
@@ -37,8 +40,10 @@ interface TimerFunction {
 export interface IGridAutoScalerJSON {
     Scaling: boolean;
     Enabled: boolean;
-    HasWorkersCap: boolean;
-    MaxAllowedWorkers: number;
+    HasMaxWorkersCap: boolean;
+    MaxWorkersCap: number;
+    HasMinWorkersCap: boolean;
+    MinWorkersCap: number;
     LaunchingWorkers: WorkerKey[];
     TerminatingWorkers: WorkerKey[];
 }
@@ -49,8 +54,10 @@ export interface IGridAutoScaler {
     hasWorkersCap: () => Promise<boolean>;
     enable: () => Promise<any>;
     disable: () => Promise<any>;
-    getMaxAllowedWorkers: () => Promise<number>;
-    setMaxAllowedWorkers: (value: number) => Promise<any>;
+    getMaxWorkersCap: () => Promise<number>;
+    setMaxWorkersCap: (value: number) => Promise<number>;
+    getMinWorkersCap: () => Promise<number>;
+    setMinWorkersCap: (value: number) => Promise<number>;
     getLaunchingWorkers: () => Promise<WorkerKey[]>;
     getTerminatingWorkers: () => Promise<WorkerKey[]>;
     getJSON: () => Promise<IGridAutoScalerJSON>;
@@ -71,7 +78,8 @@ export interface IGridAutoScaler {
 export class GridAutoScaler extends events.EventEmitter {
     private options: Options = null;
     private __enabled: boolean;
-    private __MaxAllowedWorkers: number;
+    private __MaxWorkersCap: number;
+    private __MinWorkersCap: number;
     private __terminatingWorkers: {[workerKey: string]: boolean};
     private __launchingWorkers: {[workerKey: string]: boolean};
     constructor(private scalableGrid: asg.IAutoScalableGrid, private implementation: IAutoScalerImplementation, options?: Options) {
@@ -81,7 +89,8 @@ export class GridAutoScaler extends events.EventEmitter {
         options = options || defaultOptions;
         this.options = _.assignIn({}, defaultOptions, options);
         this.__enabled = this.options.EnabledAtStart;
-        this.__MaxAllowedWorkers = this.options.MaxAllowedWorkers;
+        this.__MaxWorkersCap = this.options.MaxWorkersCap;
+        this.__MinWorkersCap = this.options.MinWorkersCap;
         this.TimerFunction.apply(this);
     }
     get Scaling() : boolean {return (this.__terminatingWorkers !== null || this.__launchingWorkers !== null);}
@@ -111,11 +120,21 @@ export class GridAutoScaler extends events.EventEmitter {
             this.emit('change');
         }
     }
-    get HasWorkersCap() : boolean {return (typeof this.__MaxAllowedWorkers === 'number' && this.__MaxAllowedWorkers > 0)}
-    get MaxAllowedWorkers() : number {return this.__MaxAllowedWorkers;}
-    set MaxAllowedWorkers(newValue: number) {
-        if (newValue !== this.__MaxAllowedWorkers) {
-            this.__MaxAllowedWorkers = newValue;
+    
+    get HasMaxWorkersCap() : boolean {return (typeof this.__MaxWorkersCap === 'number' && this.__MaxWorkersCap > 0);}
+    get MaxWorkersCap() : number {return this.__MaxWorkersCap;}
+    set MaxWorkersCap(newValue: number) {
+        if (newValue !== this.__MaxWorkersCap) {
+            this.__MaxWorkersCap = newValue;
+            this.emit('change');
+        }
+    }
+
+    get HasMinWorkersCap() : boolean {return (typeof this.__MinWorkersCap === 'number' && this.__MinWorkersCap > 0);}
+    get MinWorkersCap() : number {return this.__MinWorkersCap;}
+    set MinWorkersCap(newValue: number) {
+        if (newValue !== this.__MinWorkersCap) {
+            this.__MinWorkersCap = newValue;
             this.emit('change');
         }
     }
@@ -155,8 +174,8 @@ export class GridAutoScaler extends events.EventEmitter {
             this.implementation.ComputeWorkersLaunchRequest(state)    // compute the number of additional workers desired
             .then((launchRequest: IWorkersLaunchRequest) => {
                 let numWorkersToLaunch = 0;
-                if (this.HasWorkersCap) {
-                    let workersAllowance = Math.max(this.MaxAllowedWorkers - state.WorkerStates.length, 0);    // number of workers stlll allowed to be launched under the cap
+                if (this.HasMaxWorkersCap) {
+                    let workersAllowance = Math.max(this.MaxWorkersCap - state.WorkerStates.length, 0);    // number of workers stlll allowed to be launched under the cap
                     numWorkersToLaunch = Math.min(launchRequest.NumInstance, workersAllowance);
                 } else    // no workers cap
                     numWorkersToLaunch = launchRequest.NumInstance;
@@ -304,8 +323,10 @@ export class GridAutoScaler extends events.EventEmitter {
         return {
             Enabled: this.Enabled
             ,Scaling: this.Scaling
-            ,HasWorkersCap: this.HasWorkersCap
-            ,MaxAllowedWorkers: this.MaxAllowedWorkers
+            ,HasMaxWorkersCap: this.HasMaxWorkersCap
+            ,MaxWorkersCap: this.MaxWorkersCap
+            ,HasMinWorkersCap: this.HasMinWorkersCap
+            ,MinWorkersCap: this.MinWorkersCap
             ,LaunchingWorkers: this.LaunchingWorkers
             ,TerminatingWorkers: this.TerminatingWorkers
         };

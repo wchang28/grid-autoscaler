@@ -8,8 +8,10 @@ var events = require("events");
 var _ = require("lodash");
 var defaultOptions = {
     EnabledAtStart: false,
+    MaxWorkersCap: null,
+    MinWorkersCap: null,
     PollingIntervalMS: 1000,
-    TerminateWorkerAfterMinutesIdle: 5
+    TerminateWorkerAfterMinutesIdle: 1
 };
 // the class supported the following events:
 // 1. polling
@@ -34,7 +36,8 @@ var GridAutoScaler = (function (_super) {
         options = options || defaultOptions;
         _this.options = _.assignIn({}, defaultOptions, options);
         _this.__enabled = _this.options.EnabledAtStart;
-        _this.__MaxAllowedWorkers = _this.options.MaxAllowedWorkers;
+        _this.__MaxWorkersCap = _this.options.MaxWorkersCap;
+        _this.__MinWorkersCap = _this.options.MinWorkersCap;
         _this.TimerFunction.apply(_this);
         return _this;
     }
@@ -82,16 +85,32 @@ var GridAutoScaler = (function (_super) {
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(GridAutoScaler.prototype, "HasWorkersCap", {
-        get: function () { return (typeof this.__MaxAllowedWorkers === 'number' && this.__MaxAllowedWorkers > 0); },
+    Object.defineProperty(GridAutoScaler.prototype, "HasMaxWorkersCap", {
+        get: function () { return (typeof this.__MaxWorkersCap === 'number' && this.__MaxWorkersCap > 0); },
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(GridAutoScaler.prototype, "MaxAllowedWorkers", {
-        get: function () { return this.__MaxAllowedWorkers; },
+    Object.defineProperty(GridAutoScaler.prototype, "MaxWorkersCap", {
+        get: function () { return this.__MaxWorkersCap; },
         set: function (newValue) {
-            if (newValue !== this.__MaxAllowedWorkers) {
-                this.__MaxAllowedWorkers = newValue;
+            if (newValue !== this.__MaxWorkersCap) {
+                this.__MaxWorkersCap = newValue;
+                this.emit('change');
+            }
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(GridAutoScaler.prototype, "HasMinWorkersCap", {
+        get: function () { return (typeof this.__MinWorkersCap === 'number' && this.__MinWorkersCap > 0); },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(GridAutoScaler.prototype, "MinWorkersCap", {
+        get: function () { return this.__MinWorkersCap; },
+        set: function (newValue) {
+            if (newValue !== this.__MinWorkersCap) {
+                this.__MinWorkersCap = newValue;
                 this.emit('change');
             }
         },
@@ -134,8 +153,8 @@ var GridAutoScaler = (function (_super) {
             _this.implementation.ComputeWorkersLaunchRequest(state) // compute the number of additional workers desired
                 .then(function (launchRequest) {
                 var numWorkersToLaunch = 0;
-                if (_this.HasWorkersCap) {
-                    var workersAllowance = Math.max(_this.MaxAllowedWorkers - state.WorkerStates.length, 0); // number of workers stlll allowed to be launched under the cap
+                if (_this.HasMaxWorkersCap) {
+                    var workersAllowance = Math.max(_this.MaxWorkersCap - state.WorkerStates.length, 0); // number of workers stlll allowed to be launched under the cap
                     numWorkersToLaunch = Math.min(launchRequest.NumInstance, workersAllowance);
                 }
                 else
@@ -295,8 +314,10 @@ var GridAutoScaler = (function (_super) {
         return {
             Enabled: this.Enabled,
             Scaling: this.Scaling,
-            HasWorkersCap: this.HasWorkersCap,
-            MaxAllowedWorkers: this.MaxAllowedWorkers,
+            HasMaxWorkersCap: this.HasMaxWorkersCap,
+            MaxWorkersCap: this.MaxWorkersCap,
+            HasMinWorkersCap: this.HasMinWorkersCap,
+            MinWorkersCap: this.MinWorkersCap,
             LaunchingWorkers: this.LaunchingWorkers,
             TerminatingWorkers: this.TerminatingWorkers
         };

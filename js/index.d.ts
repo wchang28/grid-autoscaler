@@ -16,15 +16,18 @@ export interface IAutoScalerImplementation {
 }
 export interface Options {
     EnabledAtStart?: boolean;
-    MaxAllowedWorkers?: number;
+    MaxWorkersCap?: number;
+    MinWorkersCap?: number;
     PollingIntervalMS?: number;
     TerminateWorkerAfterMinutesIdle?: number;
 }
 export interface IGridAutoScalerJSON {
     Scaling: boolean;
     Enabled: boolean;
-    HasWorkersCap: boolean;
-    MaxAllowedWorkers: number;
+    HasMaxWorkersCap: boolean;
+    MaxWorkersCap: number;
+    HasMinWorkersCap: boolean;
+    MinWorkersCap: number;
     LaunchingWorkers: WorkerKey[];
     TerminatingWorkers: WorkerKey[];
 }
@@ -34,8 +37,10 @@ export interface IGridAutoScaler {
     hasWorkersCap: () => Promise<boolean>;
     enable: () => Promise<any>;
     disable: () => Promise<any>;
-    getMaxAllowedWorkers: () => Promise<number>;
-    setMaxAllowedWorkers: (value: number) => Promise<any>;
+    getMaxWorkersCap: () => Promise<number>;
+    setMaxWorkersCap: (value: number) => Promise<number>;
+    getMinWorkersCap: () => Promise<number>;
+    setMinWorkersCap: (value: number) => Promise<number>;
     getLaunchingWorkers: () => Promise<WorkerKey[]>;
     getTerminatingWorkers: () => Promise<WorkerKey[]>;
     getJSON: () => Promise<IGridAutoScalerJSON>;
@@ -46,7 +51,8 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private implementation;
     private options;
     private __enabled;
-    private __MaxAllowedWorkers;
+    private __MaxWorkersCap;
+    private __MinWorkersCap;
     private __terminatingWorkers;
     private __launchingWorkers;
     constructor(scalableGrid: asg.IAutoScalableGrid, implementation: IAutoScalerImplementation, options?: Options);
@@ -54,8 +60,10 @@ export declare class GridAutoScaler extends events.EventEmitter {
     readonly LaunchingWorkers: WorkerKey[];
     readonly TerminatingWorkers: WorkerKey[];
     Enabled: boolean;
-    readonly HasWorkersCap: boolean;
-    MaxAllowedWorkers: number;
+    readonly HasMaxWorkersCap: boolean;
+    MaxWorkersCap: number;
+    readonly HasMinWorkersCap: boolean;
+    MinWorkersCap: number;
     private getWorkerFromState(state);
     private getDownScalingPromise(state);
     private getUpScalingWithTaskDebtPromise(state);
