@@ -204,7 +204,8 @@ var GridAutoScaler = (function (_super) {
                     var workerKey = workerKeys[i];
                     currentWorkers[workerKey] = true;
                 }
-                var oldScaling = _this.Scaling;
+                var someWorkersGotTerminated = false;
+                var someWorkersGotLaunched = false;
                 if (_this.__terminatingWorkers) {
                     var workers_1 = _this.TerminatingWorkers;
                     var terminatedWorkers = [];
@@ -215,8 +216,10 @@ var GridAutoScaler = (function (_super) {
                             terminatedWorkers.push(workerKey);
                         }
                     }
-                    if (terminatedWorkers.length > 0)
+                    if (terminatedWorkers.length > 0) {
+                        someWorkersGotTerminated = true;
                         _this.emit('workers-terminated', terminatedWorkers);
+                    }
                     if (_.isEmpty(_this.__terminatingWorkers))
                         _this.__terminatingWorkers = null;
                 }
@@ -230,12 +233,14 @@ var GridAutoScaler = (function (_super) {
                             launchedWorkers.push(workerKey);
                         }
                     }
-                    if (launchedWorkers.length > 0)
+                    if (launchedWorkers.length > 0) {
+                        someWorkersGotLaunched = true;
                         _this.emit('workers-launched', launchedWorkers);
+                    }
                     if (_.isEmpty(_this.__launchingWorkers))
                         _this.__launchingWorkers = null;
                 }
-                if (_this.Scaling != oldScaling)
+                if (someWorkersGotTerminated || someWorkersGotLaunched)
                     _this.emit('change');
                 resolve({});
             }).catch(function (err) {

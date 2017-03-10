@@ -223,7 +223,8 @@ export class GridAutoScaler extends events.EventEmitter {
                     let workerKey = workerKeys[i];
                     currentWorkers[workerKey] = true;
                 }
-                let oldScaling = this.Scaling;
+                let someWorkersGotTerminated = false;
+                let someWorkersGotLaunched = false;
 
                 if (this.__terminatingWorkers) {
                     let workers = this.TerminatingWorkers;
@@ -235,7 +236,10 @@ export class GridAutoScaler extends events.EventEmitter {
                             terminatedWorkers.push(workerKey);
                         }
                     }
-                    if (terminatedWorkers.length > 0) this.emit('workers-terminated', terminatedWorkers);
+                    if (terminatedWorkers.length > 0) {
+                        someWorkersGotTerminated = true;
+                        this.emit('workers-terminated', terminatedWorkers);
+                    }
                     if (_.isEmpty(this.__terminatingWorkers)) this.__terminatingWorkers = null;
                 }
 
@@ -249,11 +253,14 @@ export class GridAutoScaler extends events.EventEmitter {
                             launchedWorkers.push(workerKey);
                         }
                     }
-                    if (launchedWorkers.length > 0) this.emit('workers-launched', launchedWorkers);
+                    if (launchedWorkers.length > 0) {
+                        someWorkersGotLaunched = true;
+                        this.emit('workers-launched', launchedWorkers);
+                    }
                     if (_.isEmpty(this.__launchingWorkers)) this.__launchingWorkers = null;
                 }
 
-                if (this.Scaling != oldScaling)
+                if (someWorkersGotTerminated || someWorkersGotLaunched)
                     this.emit('change');
 
                 resolve({});
