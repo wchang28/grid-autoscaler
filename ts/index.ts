@@ -37,8 +37,11 @@ interface TimerFunction {
     () : void
 }
 
+export type ScalingState = "Idle" | "ScalingUp" | "ScalingDown";
+
 export interface IGridAutoScalerJSON {
     Scaling: boolean;
+    ScalingState: ScalingState;
     Enabled: boolean;
     HasMaxWorkersCap: boolean;
     MaxWorkersCap: number;
@@ -111,6 +114,17 @@ export class GridAutoScaler extends events.EventEmitter {
             return workers;
         } else
             return [];
+    }
+
+    get ScalingState() : ScalingState {
+        if (!this.Scaling)
+            return "Idle";
+        else if (this.__launchingWorkers)
+            return "ScalingUp";
+        else if (this.__terminatingWorkers)
+            return "ScalingDown";
+        else
+            return "Idle";
     }
 
     get Enabled() :boolean {return this.__enabled;}
@@ -333,6 +347,7 @@ export class GridAutoScaler extends events.EventEmitter {
         return {
             Enabled: this.Enabled
             ,Scaling: this.Scaling
+            ,ScalingState: this.ScalingState
             ,HasMaxWorkersCap: this.HasMaxWorkersCap
             ,MaxWorkersCap: this.MaxWorkersCap
             ,HasMinWorkersCap: this.HasMinWorkersCap

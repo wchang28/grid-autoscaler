@@ -21,8 +21,10 @@ export interface Options {
     PollingIntervalMS?: number;
     TerminateWorkerAfterMinutesIdle?: number;
 }
+export declare type ScalingState = "Idle" | "ScalingUp" | "ScalingDown";
 export interface IGridAutoScalerJSON {
     Scaling: boolean;
+    ScalingState: ScalingState;
     Enabled: boolean;
     HasMaxWorkersCap: boolean;
     MaxWorkersCap: number;
@@ -59,6 +61,7 @@ export declare class GridAutoScaler extends events.EventEmitter {
     readonly Scaling: boolean;
     readonly LaunchingWorkers: WorkerKey[];
     readonly TerminatingWorkers: WorkerKey[];
+    readonly ScalingState: ScalingState;
     Enabled: boolean;
     readonly HasMaxWorkersCap: boolean;
     MaxWorkersCap: number;

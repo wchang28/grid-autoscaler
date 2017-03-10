@@ -74,6 +74,20 @@ var GridAutoScaler = (function (_super) {
         enumerable: true,
         configurable: true
     });
+    Object.defineProperty(GridAutoScaler.prototype, "ScalingState", {
+        get: function () {
+            if (!this.Scaling)
+                return "Idle";
+            else if (this.__launchingWorkers)
+                return "ScalingUp";
+            else if (this.__terminatingWorkers)
+                return "ScalingDown";
+            else
+                return "Idle";
+        },
+        enumerable: true,
+        configurable: true
+    });
     Object.defineProperty(GridAutoScaler.prototype, "Enabled", {
         get: function () { return this.__enabled; },
         set: function (newValue) {
@@ -322,6 +336,7 @@ var GridAutoScaler = (function (_super) {
         return {
             Enabled: this.Enabled,
             Scaling: this.Scaling,
+            ScalingState: this.ScalingState,
             HasMaxWorkersCap: this.HasMaxWorkersCap,
             MaxWorkersCap: this.MaxWorkersCap,
             HasMinWorkersCap: this.HasMinWorkersCap,
