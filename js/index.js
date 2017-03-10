@@ -129,12 +129,15 @@ var GridAutoScaler = (function (_super) {
     GridAutoScaler.prototype.getDownScalingPromise = function (state) {
         if (state.QueueEmpty) {
             var toBeTerminatedWorkers = [];
+            var maxTerminateCount = (this.HasMinWorkersCap ? Math.max(state.WorkerStates.length - this.MinWorkersCap, 0) : null);
             for (var i in state.WorkerStates) {
                 var ws = state.WorkerStates[i];
                 if (!ws.Busy && typeof ws.LastIdleTime === 'number') {
                     var elapseMS = state.CurrentTime - ws.LastIdleTime;
-                    if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000)
-                        toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
+                    if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000) {
+                        if (maxTerminateCount === null || toBeTerminatedWorkers.length < maxTerminateCount)
+                            toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
+                    }
                 }
             }
             if (toBeTerminatedWorkers.length > 0) {

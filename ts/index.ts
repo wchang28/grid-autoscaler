@@ -152,12 +152,15 @@ export class GridAutoScaler extends events.EventEmitter {
     private getDownScalingPromise(state: asg.IAutoScalableState) : Promise<WorkerKey[]> {
         if (state.QueueEmpty) {   // queue is empty
             let toBeTerminatedWorkers: asg.IWorker[]  = [];
+            let maxTerminateCount = (this.HasMinWorkersCap ? Math.max(state.WorkerStates.length -  this.MinWorkersCap, 0) : null);
             for (let i in state.WorkerStates) {
                 let ws = state.WorkerStates[i];
                 if (!ws.Busy && typeof ws.LastIdleTime === 'number') {
                     let elapseMS = state.CurrentTime - ws.LastIdleTime;
-                    if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000)
-                        toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
+                    if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000) {
+                        if (maxTerminateCount === null || toBeTerminatedWorkers.length < maxTerminateCount)
+                            toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
+                    }
                 }
             }
             if (toBeTerminatedWorkers.length > 0) {
