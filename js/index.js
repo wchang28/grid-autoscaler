@@ -19,7 +19,7 @@ var defaultOptions = {
 // 3. error (error: any)
 // 4. change
 // 5. down-scaling (workers: IWorker[])
-// 6. up-scaling (numInstances: number)
+// 6. up-scaling (IWorkersLaunchRequest)
 // 7. down-scaled (workerKeys: WorkerKey[])
 // 8. up-scaled (workerKeys: WorkerKey[])
 // 9. workers-terminated (workerKeys: WorkerKey[])
@@ -41,6 +41,16 @@ var GridAutoScaler = (function (_super) {
         _this.TimerFunction.apply(_this);
         return _this;
     }
+    Object.defineProperty(GridAutoScaler.prototype, "ScalingUp", {
+        get: function () { return (this.__launchingWorkers !== null); },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(GridAutoScaler.prototype, "ScalingDown", {
+        get: function () { return (this.__terminatingWorkers !== null); },
+        enumerable: true,
+        configurable: true
+    });
     Object.defineProperty(GridAutoScaler.prototype, "Scaling", {
         get: function () { return (this.__terminatingWorkers !== null || this.__launchingWorkers !== null); },
         enumerable: true,
@@ -70,20 +80,6 @@ var GridAutoScaler = (function (_super) {
             }
             else
                 return [];
-        },
-        enumerable: true,
-        configurable: true
-    });
-    Object.defineProperty(GridAutoScaler.prototype, "CurrentScalingState", {
-        get: function () {
-            if (!this.Scaling)
-                return "Idle";
-            else if (this.__launchingWorkers)
-                return "ScalingUp";
-            else if (this.__terminatingWorkers)
-                return "ScalingDown";
-            else
-                return "Idle";
         },
         enumerable: true,
         configurable: true
@@ -139,8 +135,68 @@ var GridAutoScaler = (function (_super) {
             RemotePort: state.RemotePort
         };
     };
-    // down-scaling logic
-    GridAutoScaler.prototype.getDownScalingPromise = function (state) {
+    GridAutoScaler.prototype.getUpScalePromise = function (launchRequest) {
+        if (launchRequest && typeof launchRequest.NumInstances === "number" && launchRequest.NumInstances > 0) {
+            this.emit('up-scaling', launchRequest);
+            return this.implementation.LaunchInstances(launchRequest);
+        }
+        else
+            return Promise.resolve(null);
+    };
+    GridAutoScaler.prototype.getDownScalePromise = function (toBeTerminatedWorkers) {
+        if (toBeTerminatedWorkers && toBeTerminatedWorkers.length > 0) {
+            this.emit('down-scaling', toBeTerminatedWorkers);
+            return this.implementation.TerminateInstances(toBeTerminatedWorkers);
+        }
+        else
+            return Promise.resolve(null);
+    };
+    GridAutoScaler.prototype.onScalingComplete = function (direction, workersKeys) {
+        var triggered = false;
+        if (workersKeys != null && workersKeys.length > 0) {
+            if (direction === 'up') {
+                if (!this.__launchingWorkers)
+                    this.__launchingWorkers = {};
+            }
+            else {
+                if (!this.__terminatingWorkers)
+                    this.__terminatingWorkers = {};
+            }
+            var scalingWorkers = (direction === 'up' ? this.__launchingWorkers : this.__terminatingWorkers);
+            for (var i in workersKeys) {
+                var workerKey = workersKeys[i];
+                scalingWorkers[workerKey] = true;
+            }
+            this.emit((direction === 'up' ? 'up-scaled' : 'down-scaled'), workersKeys);
+            this.emit('change');
+            triggered = true;
+        }
+        return triggered;
+    };
+    GridAutoScaler.prototype.upScale = function (launchRequest) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            _this.getUpScalePromise(launchRequest)
+                .then(function (workersKeys) {
+                resolve(_this.onScalingComplete("up", workersKeys));
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    GridAutoScaler.prototype.downScale = function (toBeTerminatedWorkers) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            _this.getDownScalePromise(toBeTerminatedWorkers)
+                .then(function (workersKeys) {
+                resolve(_this.onScalingComplete("down", workersKeys));
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    // auto down-scaling logic
+    GridAutoScaler.prototype.getAutoDownScalingPromise = function (state) {
         if (state.QueueEmpty) {
             var toBeTerminatedWorkers = [];
             var maxTerminateCount = (this.HasMinWorkersCap ? Math.max(state.WorkerStates.length - this.MinWorkersCap, 0) : null);
@@ -154,17 +210,12 @@ var GridAutoScaler = (function (_super) {
                     }
                 }
             }
-            if (toBeTerminatedWorkers.length > 0) {
-                this.emit('down-scaling', toBeTerminatedWorkers);
-                return this.implementation.TerminateInstances(toBeTerminatedWorkers);
-            }
-            else
-                return Promise.resolve(null);
+            return (toBeTerminatedWorkers.length > 0 ? this.getDownScalePromise(toBeTerminatedWorkers) : Promise.resolve(null));
         }
         else
             return Promise.resolve(null);
     };
-    GridAutoScaler.prototype.getUpScalingWithTaskDebtPromise = function (state) {
+    GridAutoScaler.prototype.getAutoUpScalingWithTaskDebtPromise = function (state) {
         var _this = this;
         return new Promise(function (resolve, reject) {
             _this.implementation.ComputeWorkersLaunchRequest(state) // compute the number of additional workers desired
@@ -172,13 +223,12 @@ var GridAutoScaler = (function (_super) {
                 var numWorkersToLaunch = 0;
                 if (_this.HasMaxWorkersCap) {
                     var workersAllowance = Math.max(_this.MaxWorkersCap - state.WorkerStates.length, 0); // number of workers stlll allowed to be launched under the cap
-                    numWorkersToLaunch = Math.min(launchRequest.NumInstance, workersAllowance);
+                    numWorkersToLaunch = Math.min(launchRequest.NumInstances, workersAllowance);
                 }
                 else
-                    numWorkersToLaunch = launchRequest.NumInstance;
+                    numWorkersToLaunch = launchRequest.NumInstances;
                 if (numWorkersToLaunch > 0) {
-                    _this.emit('up-scaling', numWorkersToLaunch);
-                    _this.implementation.LaunchInstances({ NumInstance: numWorkersToLaunch, Hint: launchRequest.Hint })
+                    _this.getUpScalePromise({ NumInstances: numWorkersToLaunch, Hint: launchRequest.Hint })
                         .then(function (workerKeys) {
                         resolve(workerKeys);
                     }).catch(function (err) {
@@ -192,11 +242,11 @@ var GridAutoScaler = (function (_super) {
             });
         });
     };
-    // up-scaling logic
-    GridAutoScaler.prototype.getUpScalingPromise = function (state) {
+    // auto up-scaling logic
+    GridAutoScaler.prototype.getAutoUpScalingPromise = function (state) {
         if (!state.QueueEmpty) {
             if (state.CPUDebt > 0)
-                return this.getUpScalingWithTaskDebtPromise(state);
+                return this.getAutoUpScalingWithTaskDebtPromise(state);
             else
                 return Promise.resolve(null);
         }
@@ -274,33 +324,12 @@ var GridAutoScaler = (function (_super) {
                     return _this.feedLastestWorkerStates(state.WorkerStates);
                 }).then(function () {
                     if (_this.Enabled && !_this.Scaling)
-                        return Promise.all([_this.getDownScalingPromise(state), _this.getUpScalingPromise(state)]);
+                        return Promise.all([_this.getAutoDownScalingPromise(state), _this.getAutoUpScalingPromise(state)]);
                     else
                         return Promise.resolve([null, null]);
                 }).then(function (value) {
-                    var oldScaling = _this.Scaling;
-                    var terminateWorkerKeys = value[0];
-                    if (terminateWorkerKeys != null && terminateWorkerKeys.length > 0) {
-                        _this.__terminatingWorkers = {};
-                        for (var i in terminateWorkerKeys) {
-                            var workerKey = terminateWorkerKeys[i];
-                            _this.__terminatingWorkers[workerKey] = true;
-                        }
-                        _this.emit('down-scaled', terminateWorkerKeys);
-                    }
-                    var launchWorkerKeys = value[1];
-                    if (launchWorkerKeys != null && launchWorkerKeys.length > 0) {
-                        _this.__launchingWorkers = {};
-                        for (var i in launchWorkerKeys) {
-                            var workerKey = launchWorkerKeys[i];
-                            _this.__launchingWorkers[workerKey] = true;
-                        }
-                        _this.emit('up-scaled', launchWorkerKeys);
-                    }
-                    if (_this.Scaling != oldScaling)
-                        _this.emit('change');
-                    var scalingTriggered = (terminateWorkerKeys !== null || launchWorkerKeys !== null);
-                    resolve(scalingTriggered);
+                    var triggered = (_this.onScalingComplete("down", value[0]) || _this.onScalingComplete("up", value[1]));
+                    resolve(triggered);
                 }).catch(function (err) {
                     reject(err);
                 });
@@ -335,8 +364,9 @@ var GridAutoScaler = (function (_super) {
     GridAutoScaler.prototype.toJSON = function () {
         return {
             Enabled: this.Enabled,
+            ScalingUp: this.ScalingUp,
+            ScalingDown: this.ScalingDown,
             Scaling: this.Scaling,
-            CurrentScalingState: this.CurrentScalingState,
             HasMaxWorkersCap: this.HasMaxWorkersCap,
             MaxWorkersCap: this.MaxWorkersCap,
             HasMinWorkersCap: this.HasMinWorkersCap,
