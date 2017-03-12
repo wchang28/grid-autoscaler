@@ -21,10 +21,7 @@ export interface Options {
     PollingIntervalMS?: number;
     TerminateWorkerAfterMinutesIdle?: number;
 }
-export declare type ScalingDirection = "up" | "down";
 export interface IGridAutoScalerJSON {
-    ScalingUp: boolean;
-    ScalingDown: boolean;
     Scaling: boolean;
     Enabled: boolean;
     HasMaxWorkersCap: boolean;
@@ -32,11 +29,8 @@ export interface IGridAutoScalerJSON {
     HasMinWorkersCap: boolean;
     MinWorkersCap: number;
     LaunchingWorkers: WorkerKey[];
-    TerminatingWorkers: WorkerKey[];
 }
 export interface IGridAutoScaler {
-    isScalingUp: () => Promise<boolean>;
-    isScalingDown: () => Promise<boolean>;
     isScaling: () => Promise<boolean>;
     upScale: (launchRequest: IWorkersLaunchRequest) => Promise<boolean>;
     downScale: (toBeTerminatedWorkers: asg.IWorker[]) => Promise<boolean>;
@@ -50,7 +44,6 @@ export interface IGridAutoScaler {
     getMinWorkersCap: () => Promise<number>;
     setMinWorkersCap: (value: number) => Promise<number>;
     getLaunchingWorkers: () => Promise<WorkerKey[]>;
-    getTerminatingWorkers: () => Promise<WorkerKey[]>;
     getJSON: () => Promise<IGridAutoScalerJSON>;
     getImplementationConfigUrl: () => Promise<string>;
 }
@@ -61,14 +54,10 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private __enabled;
     private __MaxWorkersCap;
     private __MinWorkersCap;
-    private __terminatingWorkers;
     private __launchingWorkers;
     constructor(scalableGrid: asg.IAutoScalableGrid, implementation: IAutoScalerImplementation, options?: Options);
-    readonly ScalingUp: boolean;
-    readonly ScalingDown: boolean;
     readonly Scaling: boolean;
     readonly LaunchingWorkers: WorkerKey[];
-    readonly TerminatingWorkers: WorkerKey[];
     Enabled: boolean;
     readonly HasMaxWorkersCap: boolean;
     MaxWorkersCap: number;
@@ -77,7 +66,8 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private getWorkerFromState(state);
     private getUpScalePromise(launchRequest);
     private getDownScalePromise(toBeTerminatedWorkers);
-    private onScalingComplete(direction, workersKeys);
+    private onUpScalingComplete(workersKeys);
+    private onDownScalingComplete(workersKeys);
     upScale(launchRequest: IWorkersLaunchRequest): Promise<boolean>;
     downScale(toBeTerminatedWorkers: asg.IWorker[]): Promise<boolean>;
     private getAutoDownScalingPromise(state);
