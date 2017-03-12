@@ -21,7 +21,7 @@ var defaultOptions = {
 // 5. down-scaling (workers: IWorker[])
 // 6. up-scaling (IWorkersLaunchRequest)
 // 7. up-scaled (workerKeys: WorkerKey[])
-// 8. down-scaled (workerKeys: WorkerKey[])
+// 8. down-scaled (workersIds: string[])
 // 9. workers-launched (workerKeys: WorkerKey[])
 var GridAutoScaler = (function (_super) {
     __extends(GridAutoScaler, _super);
@@ -120,22 +120,42 @@ var GridAutoScaler = (function (_super) {
     GridAutoScaler.prototype.getDownScalePromise = function (toBeTerminatedWorkers) {
         var _this = this;
         return new Promise(function (resolve, reject) {
+            var terminatingWorkerIds = null;
             if (toBeTerminatedWorkers && toBeTerminatedWorkers.length > 0) {
+                var keyToIdMapping_1 = {};
                 var workerIds = [];
                 for (var i in toBeTerminatedWorkers)
                     workerIds.push(toBeTerminatedWorkers[i].Id);
-                _this.scalableGrid.disableWorkers(workerIds)
+                _this.scalableGrid.disableWorkers(workerIds) // disable the workers first
                     .then(function () {
-                    _this.emit('down-scaling', toBeTerminatedWorkers);
-                    return _this.implementation.TerminateInstances(toBeTerminatedWorkers);
+                    return _this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers); // translate to worker keys
                 }).then(function (workerKeys) {
-                    resolve(workerKeys);
+                    for (var i in workerKeys) {
+                        var workerKey = workerKeys[i];
+                        keyToIdMapping_1[workerKey] = toBeTerminatedWorkers[i].Id;
+                    }
+                    _this.emit('down-scaling', toBeTerminatedWorkers);
+                    return _this.implementation.TerminateInstances(workerKeys);
+                }).then(function (workerKeys) {
+                    if (workerKeys || workerKeys.length > 0) {
+                        terminatingWorkerIds = [];
+                        for (var i in workerKeys) {
+                            var workerKey = workerKeys[i];
+                            var workerId = keyToIdMapping_1[workerKey];
+                            terminatingWorkerIds.push(workerId);
+                        }
+                        return _this.scalableGrid.setWorkersTerminating(terminatingWorkerIds);
+                    }
+                    else
+                        return Promise.resolve({});
+                }).then(function () {
+                    resolve(terminatingWorkerIds);
                 }).catch(function (err) {
                     reject(err);
                 });
             }
             else
-                resolve(null);
+                resolve(terminatingWorkerIds);
         });
     };
     GridAutoScaler.prototype.onUpScalingComplete = function (workersKeys) {
@@ -153,10 +173,10 @@ var GridAutoScaler = (function (_super) {
         }
         return triggered;
     };
-    GridAutoScaler.prototype.onDownScalingComplete = function (workersKeys) {
+    GridAutoScaler.prototype.onDownScalingComplete = function (workersIds) {
         var triggered = false;
-        if (workersKeys != null && workersKeys.length > 0) {
-            this.emit('down-scaled', workersKeys);
+        if (workersIds != null && workersIds.length > 0) {
+            this.emit('down-scaled', workersIds);
             triggered = true;
         }
         return triggered;
@@ -176,8 +196,8 @@ var GridAutoScaler = (function (_super) {
         var _this = this;
         return new Promise(function (resolve, reject) {
             _this.getDownScalePromise(toBeTerminatedWorkers)
-                .then(function (workersKeys) {
-                resolve(_this.onDownScalingComplete(workersKeys));
+                .then(function (workersIds) {
+                resolve(_this.onDownScalingComplete(workersIds));
             }).catch(function (err) {
                 reject(err);
             });

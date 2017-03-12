@@ -11,7 +11,7 @@ export interface IAutoScalerImplementation {
     TranslateToWorkerKeys: (workers: asg.IWorker[]) => Promise<WorkerKey[]>;
     ComputeWorkersLaunchRequest: (state: asg.IAutoScalableState) => Promise<IWorkersLaunchRequest>;
     LaunchInstances: (launchRequest: IWorkersLaunchRequest) => Promise<WorkerKey[]>;
-    TerminateInstances: (workers: asg.IWorker[]) => Promise<WorkerKey[]>;
+    TerminateInstances: (workerKeys: WorkerKey[]) => Promise<WorkerKey[]>;
     getConfigUrl: () => Promise<string>;
 }
 export interface Options {
@@ -67,7 +67,7 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private getUpScalePromise(launchRequest);
     private getDownScalePromise(toBeTerminatedWorkers);
     private onUpScalingComplete(workersKeys);
-    private onDownScalingComplete(workersKeys);
+    private onDownScalingComplete(workersIds);
     upScale(launchRequest: IWorkersLaunchRequest): Promise<boolean>;
     downScale(toBeTerminatedWorkers: asg.IWorker[]): Promise<boolean>;
     private getAutoDownScalingPromise(state);
