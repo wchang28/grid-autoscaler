@@ -39,7 +39,7 @@ var GridAutoScaler = (function (_super) {
         _this.TimerFunction.apply(_this);
         return _this;
     }
-    Object.defineProperty(GridAutoScaler.prototype, "Scaling", {
+    Object.defineProperty(GridAutoScaler.prototype, "ScalingUp", {
         get: function () { return (this.__launchingWorkers !== null); },
         enumerable: true,
         configurable: true
@@ -109,7 +109,7 @@ var GridAutoScaler = (function (_super) {
             RemotePort: state.RemotePort
         };
     };
-    GridAutoScaler.prototype.getUpScalePromise = function (launchRequest) {
+    GridAutoScaler.prototype.upScale = function (launchRequest) {
         if (launchRequest && typeof launchRequest.NumInstances === "number" && launchRequest.NumInstances > 0) {
             this.emit('up-scaling', launchRequest);
             return this.implementation.LaunchInstances(launchRequest);
@@ -117,7 +117,7 @@ var GridAutoScaler = (function (_super) {
         else
             return Promise.resolve(null);
     };
-    GridAutoScaler.prototype.getDownScalePromise = function (toBeTerminatedWorkers) {
+    GridAutoScaler.prototype.downScale = function (toBeTerminatedWorkers) {
         var _this = this;
         return new Promise(function (resolve, reject) {
             var terminatingWorkerIds = null;
@@ -181,10 +181,10 @@ var GridAutoScaler = (function (_super) {
         }
         return triggered;
     };
-    GridAutoScaler.prototype.upScale = function (launchRequest) {
+    GridAutoScaler.prototype.launchNewWorkers = function (launchRequest) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            _this.getUpScalePromise(launchRequest)
+            _this.upScale(launchRequest)
                 .then(function (workersKeys) {
                 resolve(_this.onUpScalingComplete(workersKeys));
             }).catch(function (err) {
@@ -192,10 +192,10 @@ var GridAutoScaler = (function (_super) {
             });
         });
     };
-    GridAutoScaler.prototype.downScale = function (toBeTerminatedWorkers) {
+    GridAutoScaler.prototype.terminateWorkers = function (workers) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            _this.getDownScalePromise(toBeTerminatedWorkers)
+            _this.downScale(workers)
                 .then(function (workersIds) {
                 resolve(_this.onDownScalingComplete(workersIds));
             }).catch(function (err) {
@@ -203,30 +203,27 @@ var GridAutoScaler = (function (_super) {
             });
         });
     };
-    // auto down-scaling logic
-    GridAutoScaler.prototype.getAutoDownScalingPromise = function (state) {
-        if (state.QueueEmpty) {
-            var toBeTerminatedWorkers = [];
-            var maxTerminateCount = (this.HasMinWorkersCap ? Math.max(state.WorkerStates.length - this.MinWorkersCap, 0) : null);
-            for (var i in state.WorkerStates) {
-                var ws = state.WorkerStates[i];
-                if (!ws.Terminating && !ws.Busy && typeof ws.LastIdleTime === 'number') {
-                    var elapseMS = state.CurrentTime - ws.LastIdleTime;
-                    if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000) {
-                        if (maxTerminateCount === null || toBeTerminatedWorkers.length < maxTerminateCount)
-                            toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
-                    }
+    // compute to be terminated workers base on the current state of the grid and min. workers cap
+    GridAutoScaler.prototype.computeAutoDownScalingWorkers = function (state) {
+        var toBeTerminatedWorkers = [];
+        var maxTerminateCount = (this.HasMinWorkersCap ? Math.max(state.WorkerStates.length - this.MinWorkersCap, 0) : null);
+        for (var i in state.WorkerStates) {
+            var ws = state.WorkerStates[i];
+            if (!ws.Terminating && !ws.Busy && typeof ws.LastIdleTime === 'number') {
+                var elapseMS = state.CurrentTime - ws.LastIdleTime;
+                if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000) {
+                    if (maxTerminateCount === null || toBeTerminatedWorkers.length < maxTerminateCount)
+                        toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
                 }
             }
-            return (toBeTerminatedWorkers.length > 0 ? this.getDownScalePromise(toBeTerminatedWorkers) : Promise.resolve(null));
         }
-        else
-            return Promise.resolve(null);
+        return Promise.resolve(toBeTerminatedWorkers.length > 0 ? toBeTerminatedWorkers : null);
     };
-    GridAutoScaler.prototype.getAutoUpScalingWithTaskDebtPromise = function (state) {
+    // compute launch request base on the current state of the grid and max. workers cap
+    GridAutoScaler.prototype.computeAutoUpScalingLaunchRequest = function (state) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            _this.implementation.ComputeWorkersLaunchRequest(state) // compute the number of additional workers desired
+            _this.implementation.EstimateWorkersLaunchRequest(state) // compute the number of additional workers desired
                 .then(function (launchRequest) {
                 var numWorkersToLaunch = 0;
                 if (_this.HasMaxWorkersCap) {
@@ -235,8 +232,42 @@ var GridAutoScaler = (function (_super) {
                 }
                 else
                     numWorkersToLaunch = launchRequest.NumInstances;
-                if (numWorkersToLaunch > 0) {
-                    _this.getUpScalePromise({ NumInstances: numWorkersToLaunch, Hint: launchRequest.Hint })
+                if (numWorkersToLaunch > 0)
+                    resolve({ NumInstances: numWorkersToLaunch, Hint: launchRequest.Hint });
+                else
+                    resolve(null);
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    GridAutoScaler.prototype.autoDownScaling = function (state) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            _this.computeAutoDownScalingWorkers(state)
+                .then(function (workers) {
+                if (workers && workers.length > 0) {
+                    _this.downScale(workers)
+                        .then(function (workerIds) {
+                        resolve(workerIds);
+                    }).catch(function (err) {
+                        reject(err);
+                    });
+                }
+                else
+                    resolve(null);
+            }).catch(function (err) {
+                reject(err);
+            });
+        });
+    };
+    GridAutoScaler.prototype.autoUpScaling = function (state) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            _this.computeAutoUpScalingLaunchRequest(state)
+                .then(function (launchRequest) {
+                if (launchRequest) {
+                    _this.upScale(launchRequest)
                         .then(function (workerKeys) {
                         resolve(workerKeys);
                     }).catch(function (err) {
@@ -250,17 +281,8 @@ var GridAutoScaler = (function (_super) {
             });
         });
     };
-    // auto up-scaling logic
-    GridAutoScaler.prototype.getAutoUpScalingPromise = function (state) {
-        if (!state.QueueEmpty) {
-            if (state.CPUDebt > 0)
-                return this.getAutoUpScalingWithTaskDebtPromise(state);
-            else
-                return Promise.resolve(null);
-        }
-        else
-            return Promise.resolve(null);
-    };
+    GridAutoScaler.prototype.satisfyAutoDownScalingCondition = function (state) { return (state.QueueEmpty); };
+    GridAutoScaler.prototype.satisfyAutoUpScalingCondition = function (state) { return (!state.QueueEmpty && state.CPUDebt > 0); };
     GridAutoScaler.prototype.feedLastestWorkerStates = function (workerStates) {
         var _this = this;
         return new Promise(function (resolve, reject) {
@@ -313,10 +335,15 @@ var GridAutoScaler = (function (_super) {
                     _this.emit('scalable-state', state);
                     return _this.feedLastestWorkerStates(state.WorkerStates);
                 }).then(function () {
-                    if (_this.Enabled && !_this.Scaling)
-                        return Promise.all([_this.getAutoDownScalingPromise(state), _this.getAutoUpScalingPromise(state)]);
-                    else
-                        return Promise.resolve([null, null]);
+                    var autoDownScalingPromise = Promise.resolve(null);
+                    var autoUpScalingPromise = Promise.resolve(null);
+                    if (_this.Enabled && !_this.ScalingUp) {
+                        if (_this.satisfyAutoDownScalingCondition(state))
+                            autoDownScalingPromise = _this.autoDownScaling(state);
+                        if (_this.satisfyAutoUpScalingCondition(state))
+                            autoUpScalingPromise = _this.autoUpScaling(state);
+                    }
+                    return Promise.all([autoDownScalingPromise, autoUpScalingPromise]);
                 }).then(function (value) {
                     var triggered = (_this.onDownScalingComplete(value[0]) || _this.onUpScalingComplete(value[1]));
                     resolve(triggered);
@@ -354,7 +381,7 @@ var GridAutoScaler = (function (_super) {
     GridAutoScaler.prototype.toJSON = function () {
         return {
             Enabled: this.Enabled,
-            Scaling: this.Scaling,
+            ScalingUp: this.ScalingUp,
             HasMaxWorkersCap: this.HasMaxWorkersCap,
             MaxWorkersCap: this.MaxWorkersCap,
             HasMinWorkersCap: this.HasMinWorkersCap,
