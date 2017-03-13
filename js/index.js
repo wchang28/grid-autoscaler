@@ -35,11 +35,13 @@ var GridAutoScaler = (function (_super) {
         _this.__launchingWorkers = null;
         options = options || defaultOptions;
         options = _.assignIn({}, defaultOptions, options);
-        _this.__PollingIntervalMS = _this.boundValue(options.PollingIntervalMS, GridAutoScaler.MIN_POLLING_INTERVAL_MS);
+        _this.__PollingIntervalMS = Math.round(_this.boundValue(options.PollingIntervalMS, GridAutoScaler.MIN_POLLING_INTERVAL_MS));
         _this.__enabled = options.EnabledAtStart;
-        _this.__MaxWorkersCap = _this.boundValue(options.MaxWorkersCap, GridAutoScaler.MIN_MAX_WORKERS_CAP);
-        _this.__MinWorkersCap = _this.boundValue(options.MinWorkersCap, GridAutoScaler.MIN_MIN_WORKERS_CAP);
-        _this.__TerminateWorkerAfterMinutesIdle = _this.boundValue(options.TerminateWorkerAfterMinutesIdle, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
+        if (typeof options.MaxWorkersCap === "number")
+            _this.__MaxWorkersCap = Math.round(_this.boundValue(options.MaxWorkersCap, GridAutoScaler.MIN_MAX_WORKERS_CAP));
+        if (typeof options.MinWorkersCap === "number")
+            _this.__MinWorkersCap = Math.round(_this.boundValue(options.MinWorkersCap, GridAutoScaler.MIN_MIN_WORKERS_CAP));
+        _this.__TerminateWorkerAfterMinutesIdle = Math.round(_this.boundValue(options.TerminateWorkerAfterMinutesIdle, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE));
         _this.__RampUpSpeedRatio = _this.boundValue(options.RampUpSpeedRatio, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
         _this.TimerFunction.apply(_this);
         return _this;
@@ -87,7 +89,8 @@ var GridAutoScaler = (function (_super) {
     Object.defineProperty(GridAutoScaler.prototype, "MaxWorkersCap", {
         get: function () { return this.__MaxWorkersCap; },
         set: function (newValue) {
-            newValue = this.boundValue(newValue, GridAutoScaler.MIN_MAX_WORKERS_CAP);
+            if (typeof newValue === 'number')
+                newValue = Math.round(this.boundValue(newValue, GridAutoScaler.MIN_MAX_WORKERS_CAP));
             if (newValue !== this.__MaxWorkersCap) {
                 this.__MaxWorkersCap = newValue;
                 this.emit('change');
@@ -104,7 +107,8 @@ var GridAutoScaler = (function (_super) {
     Object.defineProperty(GridAutoScaler.prototype, "MinWorkersCap", {
         get: function () { return this.__MinWorkersCap; },
         set: function (newValue) {
-            newValue = this.boundValue(newValue, GridAutoScaler.MIN_MIN_WORKERS_CAP);
+            if (typeof newValue === 'number')
+                newValue = Math.round(this.boundValue(newValue, GridAutoScaler.MIN_MIN_WORKERS_CAP));
             if (newValue !== this.__MinWorkersCap) {
                 this.__MinWorkersCap = newValue;
                 this.emit('change');
@@ -116,10 +120,12 @@ var GridAutoScaler = (function (_super) {
     Object.defineProperty(GridAutoScaler.prototype, "TerminateWorkerAfterMinutesIdle", {
         get: function () { return this.__TerminateWorkerAfterMinutesIdle; },
         set: function (newValue) {
-            newValue = this.boundValue(newValue, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
-            if (newValue !== this.__TerminateWorkerAfterMinutesIdle) {
-                this.__TerminateWorkerAfterMinutesIdle = newValue;
-                this.emit('change');
+            if (typeof newValue === 'number') {
+                newValue = Math.round(this.boundValue(newValue, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE));
+                if (newValue !== this.__TerminateWorkerAfterMinutesIdle) {
+                    this.__TerminateWorkerAfterMinutesIdle = newValue;
+                    this.emit('change');
+                }
             }
         },
         enumerable: true,
@@ -128,10 +134,12 @@ var GridAutoScaler = (function (_super) {
     Object.defineProperty(GridAutoScaler.prototype, "RampUpSpeedRatio", {
         get: function () { return this.__RampUpSpeedRatio; },
         set: function (newValue) {
-            newValue = this.boundValue(newValue, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
-            if (newValue !== this.__RampUpSpeedRatio) {
-                this.__RampUpSpeedRatio = newValue;
-                this.emit('change');
+            if (typeof newValue === 'number') {
+                newValue = this.boundValue(newValue, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
+                if (newValue !== this.__RampUpSpeedRatio) {
+                    this.__RampUpSpeedRatio = newValue;
+                    this.emit('change');
+                }
             }
         },
         enumerable: true,

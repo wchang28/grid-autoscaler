@@ -55,11 +55,11 @@ export class GridAutoScaler extends events.EventEmitter {
         this.__launchingWorkers = null;
         options = options || defaultOptions;
         options = _.assignIn({}, defaultOptions, options);
-        this.__PollingIntervalMS = this.boundValue(options.PollingIntervalMS, GridAutoScaler.MIN_POLLING_INTERVAL_MS);
+        this.__PollingIntervalMS = Math.round(this.boundValue(options.PollingIntervalMS, GridAutoScaler.MIN_POLLING_INTERVAL_MS));
         this.__enabled = options.EnabledAtStart;
-        this.__MaxWorkersCap = this.boundValue(options.MaxWorkersCap, GridAutoScaler.MIN_MAX_WORKERS_CAP);
-        this.__MinWorkersCap = this.boundValue(options.MinWorkersCap, GridAutoScaler.MIN_MIN_WORKERS_CAP);
-        this.__TerminateWorkerAfterMinutesIdle = this.boundValue(options.TerminateWorkerAfterMinutesIdle, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
+        if (typeof options.MaxWorkersCap === "number") this.__MaxWorkersCap = Math.round(this.boundValue(options.MaxWorkersCap, GridAutoScaler.MIN_MAX_WORKERS_CAP));
+        if (typeof options.MinWorkersCap === "number") this.__MinWorkersCap = Math.round(this.boundValue(options.MinWorkersCap, GridAutoScaler.MIN_MIN_WORKERS_CAP));
+        this.__TerminateWorkerAfterMinutesIdle = Math.round(this.boundValue(options.TerminateWorkerAfterMinutesIdle, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE));
         this.__RampUpSpeedRatio = this.boundValue(options.RampUpSpeedRatio, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
         this.TimerFunction.apply(this);
     }
@@ -90,7 +90,7 @@ export class GridAutoScaler extends events.EventEmitter {
     get HasMaxWorkersCap() : boolean {return (typeof this.__MaxWorkersCap === 'number' && this.__MaxWorkersCap > 0);}
     get MaxWorkersCap() : number {return this.__MaxWorkersCap;}
     set MaxWorkersCap(newValue: number) {
-        newValue = this.boundValue(newValue, GridAutoScaler.MIN_MAX_WORKERS_CAP);
+        if (typeof newValue === 'number') newValue = Math.round(this.boundValue(newValue, GridAutoScaler.MIN_MAX_WORKERS_CAP));
         if (newValue !== this.__MaxWorkersCap) {
             this.__MaxWorkersCap = newValue;
             this.emit('change');
@@ -100,7 +100,7 @@ export class GridAutoScaler extends events.EventEmitter {
     get HasMinWorkersCap() : boolean {return (typeof this.__MinWorkersCap === 'number' && this.__MinWorkersCap > 0);}
     get MinWorkersCap() : number {return this.__MinWorkersCap;}
     set MinWorkersCap(newValue: number) {
-        newValue = this.boundValue(newValue, GridAutoScaler.MIN_MIN_WORKERS_CAP);
+        if (typeof newValue === 'number') newValue = Math.round(this.boundValue(newValue, GridAutoScaler.MIN_MIN_WORKERS_CAP));
         if (newValue !== this.__MinWorkersCap) {
             this.__MinWorkersCap = newValue;
             this.emit('change');
@@ -109,19 +109,23 @@ export class GridAutoScaler extends events.EventEmitter {
 
     get TerminateWorkerAfterMinutesIdle() : number {return this.__TerminateWorkerAfterMinutesIdle;}
     set TerminateWorkerAfterMinutesIdle(newValue: number) {
-        newValue = this.boundValue(newValue, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
-        if (newValue !== this.__TerminateWorkerAfterMinutesIdle) {
-            this.__TerminateWorkerAfterMinutesIdle = newValue;
-            this.emit('change');
+        if (typeof newValue === 'number') {
+            newValue = Math.round(this.boundValue(newValue, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE));
+            if (newValue !== this.__TerminateWorkerAfterMinutesIdle) {
+                this.__TerminateWorkerAfterMinutesIdle = newValue;
+                this.emit('change');
+            }
         }
     }
 
     get RampUpSpeedRatio() : number {return this.__RampUpSpeedRatio;}
     set RampUpSpeedRatio(newValue: number) {
-        newValue = this.boundValue(newValue, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
-        if (newValue !== this.__RampUpSpeedRatio) {
-            this.__RampUpSpeedRatio = newValue;
-            this.emit('change');
+        if (typeof newValue === 'number') {
+            newValue = this.boundValue(newValue, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
+            if (newValue !== this.__RampUpSpeedRatio) {
+                this.__RampUpSpeedRatio = newValue;
+                this.emit('change');
+            }
         }
     }
 
