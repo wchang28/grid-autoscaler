@@ -436,6 +436,8 @@ var GridAutoScaler = (function (_super) {
             MaxWorkersCap: this.MaxWorkersCap,
             HasMinWorkersCap: this.HasMinWorkersCap,
             MinWorkersCap: this.MinWorkersCap,
+            TerminateWorkerAfterMinutesIdle: this.TerminateWorkerAfterMinutesIdle,
+            RampUpSpeedRatio: this.RampUpSpeedRatio,
             LaunchingWorkers: this.LaunchingWorkers
         };
     };
