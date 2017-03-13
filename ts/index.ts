@@ -32,6 +32,8 @@ interface TimerFunction {
 // 7. up-scaled (workerKeys: WorkerKey[])
 // 8. down-scaled (workersIds: string[])
 // 9. workers-launched (workerKeys: WorkerKey[])
+// 10. disabling-workers (workerIds:string[])
+// 11. set-workers-termination (workerIds:string[])
 export class GridAutoScaler extends events.EventEmitter {
     private options: Options = null;
     private __enabled: boolean;
@@ -110,6 +112,7 @@ export class GridAutoScaler extends events.EventEmitter {
                 let workerIds:string[] = [];
                 for (let i in toBeTerminatedWorkers)
                     workerIds.push(toBeTerminatedWorkers[i].Id);
+                this.emit('disabling-workers', workerIds);
                 this.scalableGrid.disableWorkers(workerIds) // disable the workers first
                 .then(() => {
                     return this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers) // translate to worker keys
@@ -121,14 +124,15 @@ export class GridAutoScaler extends events.EventEmitter {
                     this.emit('down-scaling', toBeTerminatedWorkers);
                     return this.implementation.TerminateInstances(workerKeys);
                 }).then((workerKeys: WorkerKey[]) => {
-                    if (workerKeys || workerKeys.length > 0) {
+                    if (workerKeys && workerKeys.length > 0) {
                         terminatingWorkerIds = [];
                         for (let i in workerKeys) {
                             let workerKey = workerKeys[i];
                             let workerId = keyToIdMapping[workerKey];
                             terminatingWorkerIds.push(workerId);
                         }
-                        return this.scalableGrid.setWorkersTerminating(terminatingWorkerIds)
+                        this.emit('set-workers-termination', terminatingWorkerIds);
+                        return this.scalableGrid.setWorkersTerminating(terminatingWorkerIds);
                     } else
                         return Promise.resolve<any>({});
                 }).then(() => {
