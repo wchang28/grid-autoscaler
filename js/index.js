@@ -51,6 +51,16 @@ var GridAutoScaler = (function (_super) {
         value = Math.max(value, min);
         return (typeof max === "number" ? Math.min(value, max) : value);
     };
+    Object.defineProperty(GridAutoScaler.prototype, "Grid", {
+        get: function () { return this.scalableGrid; },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(GridAutoScaler.prototype, "Implementation", {
+        get: function () { return this.implementation; },
+        enumerable: true,
+        configurable: true
+    });
     Object.defineProperty(GridAutoScaler.prototype, "ScalingUp", {
         get: function () { return (this.__launchingWorkers !== null); },
         enumerable: true,

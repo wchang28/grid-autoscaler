@@ -28,6 +28,8 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private static MAX_RAMP_UP_SPEED_RATIO;
     constructor(scalableGrid: IAutoScalableGrid, implementation: IAutoScalerImplementation, options?: Options);
     private boundValue(value, min, max?);
+    readonly Grid: IAutoScalableGrid;
+    readonly Implementation: IAutoScalerImplementation;
     readonly ScalingUp: boolean;
     readonly LaunchingWorkers: WorkerKey[];
     Enabled: boolean;

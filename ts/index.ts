@@ -68,6 +68,8 @@ export class GridAutoScaler extends events.EventEmitter {
         value = Math.max(value, min);
         return (typeof max === "number" ? Math.min(value, max) : value);
     }
+    get Grid(): IAutoScalableGrid {return this.scalableGrid;}
+    get Implementation(): IAutoScalerImplementation {return this.implementation;}
     get ScalingUp() : boolean {return (this.__launchingWorkers !== null);}
     get LaunchingWorkers() : WorkerKey[] {
         if (this.__launchingWorkers) {
