@@ -8,6 +8,7 @@ export interface Options {
     MinWorkersCap?: number;
     PollingIntervalMS?: number;
     TerminateWorkerAfterMinutesIdle?: number;
+    RampUpSpeedRatio?: number;
 }
 
 let defaultOptions: Options = {
@@ -16,6 +17,7 @@ let defaultOptions: Options = {
     ,MinWorkersCap: null
     ,PollingIntervalMS: 1000
     ,TerminateWorkerAfterMinutesIdle: 1
+    ,RampUpSpeedRatio: 0.5
 };
 
 interface TimerFunction {
@@ -28,27 +30,43 @@ interface TimerFunction {
 // 3. error (error: any)
 // 4. change
 // 5. down-scaling (workers: IWorker[])
-// 6. up-scaling (IWorkersLaunchRequest)
+// 6. up-scaling (launchRequest IWorkersLaunchRequest)
 // 7. up-scaled (workerKeys: WorkerKey[])
 // 8. down-scaled (workersIds: string[])
 // 9. workers-launched (workerKeys: WorkerKey[])
 // 10. disabling-workers (workerIds:string[])
 // 11. set-workers-termination (workerIds:string[])
 export class GridAutoScaler extends events.EventEmitter {
-    private options: Options = null;
+    private __PollingIntervalMS: number;
     private __enabled: boolean;
     private __MaxWorkersCap: number;
     private __MinWorkersCap: number;
+    private __TerminateWorkerAfterMinutesIdle: number;
+    private __RampUpSpeedRatio: number;
     private __launchingWorkers: {[workerKey: string]: boolean};
+    private static MIN_POLLING_INTERVAL_MS = 500;
+    private static MIN_MAX_WORKERS_CAP = 1;
+    private static MIN_MIN_WORKERS_CAP = 0;
+    private static MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE = 1;
+    private static MIN_RAMP_UP_SPEED_RATIO = 0.0;
+    private static MAX_RAMP_UP_SPEED_RATIO = 1.0;
     constructor(private scalableGrid: IAutoScalableGrid, private implementation: IAutoScalerImplementation, options?: Options) {
         super();
         this.__launchingWorkers = null;
         options = options || defaultOptions;
-        this.options = _.assignIn({}, defaultOptions, options);
-        this.__enabled = this.options.EnabledAtStart;
-        this.__MaxWorkersCap = this.options.MaxWorkersCap;
-        this.__MinWorkersCap = this.options.MinWorkersCap;
+        options = _.assignIn({}, defaultOptions, options);
+        this.__PollingIntervalMS = this.boundValue(options.PollingIntervalMS, GridAutoScaler.MIN_POLLING_INTERVAL_MS);
+        this.__enabled = options.EnabledAtStart;
+        this.__MaxWorkersCap = this.boundValue(options.MaxWorkersCap, GridAutoScaler.MIN_MAX_WORKERS_CAP);
+        this.__MinWorkersCap = this.boundValue(options.MinWorkersCap, GridAutoScaler.MIN_MIN_WORKERS_CAP);
+        this.__TerminateWorkerAfterMinutesIdle = this.boundValue(options.TerminateWorkerAfterMinutesIdle, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
+        this.__RampUpSpeedRatio = this.boundValue(options.RampUpSpeedRatio, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
         this.TimerFunction.apply(this);
+    }
+    // set min/max bound on value
+    private boundValue(value: number, min: number, max?: number) : number {
+        value = Math.max(value, min);
+        return (typeof max === "number" ? Math.min(value, max) : value);
     }
     get ScalingUp() : boolean {return (this.__launchingWorkers !== null);}
     get LaunchingWorkers() : WorkerKey[] {
@@ -72,6 +90,7 @@ export class GridAutoScaler extends events.EventEmitter {
     get HasMaxWorkersCap() : boolean {return (typeof this.__MaxWorkersCap === 'number' && this.__MaxWorkersCap > 0);}
     get MaxWorkersCap() : number {return this.__MaxWorkersCap;}
     set MaxWorkersCap(newValue: number) {
+        newValue = this.boundValue(newValue, GridAutoScaler.MIN_MAX_WORKERS_CAP);
         if (newValue !== this.__MaxWorkersCap) {
             this.__MaxWorkersCap = newValue;
             this.emit('change');
@@ -81,8 +100,27 @@ export class GridAutoScaler extends events.EventEmitter {
     get HasMinWorkersCap() : boolean {return (typeof this.__MinWorkersCap === 'number' && this.__MinWorkersCap > 0);}
     get MinWorkersCap() : number {return this.__MinWorkersCap;}
     set MinWorkersCap(newValue: number) {
+        newValue = this.boundValue(newValue, GridAutoScaler.MIN_MIN_WORKERS_CAP);
         if (newValue !== this.__MinWorkersCap) {
             this.__MinWorkersCap = newValue;
+            this.emit('change');
+        }
+    }
+
+    get TerminateWorkerAfterMinutesIdle() : number {return this.__TerminateWorkerAfterMinutesIdle;}
+    set TerminateWorkerAfterMinutesIdle(newValue: number) {
+        newValue = this.boundValue(newValue, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
+        if (newValue !== this.__TerminateWorkerAfterMinutesIdle) {
+            this.__TerminateWorkerAfterMinutesIdle = newValue;
+            this.emit('change');
+        }
+    }
+
+    get RampUpSpeedRatio() : number {return this.__RampUpSpeedRatio;}
+    set RampUpSpeedRatio(newValue: number) {
+        newValue = this.boundValue(newValue, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
+        if (newValue !== this.__RampUpSpeedRatio) {
+            this.__RampUpSpeedRatio = newValue;
             this.emit('change');
         }
     }
@@ -194,12 +232,17 @@ export class GridAutoScaler extends events.EventEmitter {
     // compute to be terminated workers base on the current state of the grid and min. workers cap
     private computeAutoDownScalingWorkers(state: IAutoScalableState) : Promise<IWorker[]> {
         let toBeTerminatedWorkers: IWorker[]  = [];
-        let maxTerminateCount = (this.HasMinWorkersCap ? Math.max(state.WorkerStates.length -  this.MinWorkersCap, 0) : null);
+        let numWorkersNotTerminating = 0;
+        for (let i in state.WorkerStates) {
+            let ws = state.WorkerStates[i];
+            if (!ws.Terminating) numWorkersNotTerminating++;
+        }
+        let maxTerminateCount = (this.HasMinWorkersCap ? Math.max(numWorkersNotTerminating -  this.MinWorkersCap, 0) : null);
         for (let i in state.WorkerStates) {
             let ws = state.WorkerStates[i];
             if (!ws.Terminating && !ws.Busy && typeof ws.LastIdleTime === 'number') {
                 let elapseMS = state.CurrentTime - ws.LastIdleTime;
-                if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000) {
+                if (elapseMS > this.__TerminateWorkerAfterMinutesIdle * 60 * 1000) {
                     if (maxTerminateCount === null || toBeTerminatedWorkers.length < maxTerminateCount)
                         toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
                 }
@@ -213,14 +256,13 @@ export class GridAutoScaler extends events.EventEmitter {
         return new Promise<IWorkersLaunchRequest>((resolve:(value: IWorkersLaunchRequest) => void, reject: (err: any) => void) => {
             this.implementation.EstimateWorkersLaunchRequest(state)    // compute the number of additional workers desired
             .then((launchRequest: IWorkersLaunchRequest) => {
-                let numWorkersToLaunch = 0;
-                if (this.HasMaxWorkersCap) {
+                let NumInstances = Math.max(Math.round(launchRequest.NumInstances * this.__RampUpSpeedRatio), 1);
+                if (this.HasMaxWorkersCap) {    // has max workers cap
                     let workersAllowance = Math.max(this.MaxWorkersCap - state.WorkerStates.length, 0);    // number of workers stlll allowed to be launched under the cap
-                    numWorkersToLaunch = Math.min(launchRequest.NumInstances, workersAllowance);
-                } else    // no workers cap
-                    numWorkersToLaunch = launchRequest.NumInstances;
-                if (numWorkersToLaunch > 0)
-                    resolve({NumInstances: numWorkersToLaunch, Hint: launchRequest.Hint});
+                    NumInstances = Math.min(NumInstances, workersAllowance);
+                }
+                if (NumInstances > 0)
+                    resolve({NumInstances, Hint: launchRequest.Hint});
                 else
                     resolve(null);
             }).catch((err: any) => {
@@ -343,10 +385,10 @@ export class GridAutoScaler extends events.EventEmitter {
             this.emit('polling');
             this.AutoScalingPromise
             .then((scalingTriggered: boolean) => {
-                setTimeout(this.TimerFunction, this.options.PollingIntervalMS);
+                setTimeout(this.TimerFunction, this.__PollingIntervalMS);
             }).catch((err:any) => {
                 this.emit('error', err);
-                setTimeout(this.TimerFunction, this.options.PollingIntervalMS);
+                setTimeout(this.TimerFunction, this.__PollingIntervalMS);
             });
         };
         return func.bind(this);

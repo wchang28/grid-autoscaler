@@ -11,7 +11,8 @@ var defaultOptions = {
     MaxWorkersCap: null,
     MinWorkersCap: null,
     PollingIntervalMS: 1000,
-    TerminateWorkerAfterMinutesIdle: 1
+    TerminateWorkerAfterMinutesIdle: 1,
+    RampUpSpeedRatio: 0.5
 };
 // the class supported the following events:
 // 1. polling
@@ -19,7 +20,7 @@ var defaultOptions = {
 // 3. error (error: any)
 // 4. change
 // 5. down-scaling (workers: IWorker[])
-// 6. up-scaling (IWorkersLaunchRequest)
+// 6. up-scaling (launchRequest IWorkersLaunchRequest)
 // 7. up-scaled (workerKeys: WorkerKey[])
 // 8. down-scaled (workersIds: string[])
 // 9. workers-launched (workerKeys: WorkerKey[])
@@ -31,16 +32,23 @@ var GridAutoScaler = (function (_super) {
         var _this = _super.call(this) || this;
         _this.scalableGrid = scalableGrid;
         _this.implementation = implementation;
-        _this.options = null;
         _this.__launchingWorkers = null;
         options = options || defaultOptions;
-        _this.options = _.assignIn({}, defaultOptions, options);
-        _this.__enabled = _this.options.EnabledAtStart;
-        _this.__MaxWorkersCap = _this.options.MaxWorkersCap;
-        _this.__MinWorkersCap = _this.options.MinWorkersCap;
+        options = _.assignIn({}, defaultOptions, options);
+        _this.__PollingIntervalMS = _this.boundValue(options.PollingIntervalMS, GridAutoScaler.MIN_POLLING_INTERVAL_MS);
+        _this.__enabled = options.EnabledAtStart;
+        _this.__MaxWorkersCap = _this.boundValue(options.MaxWorkersCap, GridAutoScaler.MIN_MAX_WORKERS_CAP);
+        _this.__MinWorkersCap = _this.boundValue(options.MinWorkersCap, GridAutoScaler.MIN_MIN_WORKERS_CAP);
+        _this.__TerminateWorkerAfterMinutesIdle = _this.boundValue(options.TerminateWorkerAfterMinutesIdle, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
+        _this.__RampUpSpeedRatio = _this.boundValue(options.RampUpSpeedRatio, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
         _this.TimerFunction.apply(_this);
         return _this;
     }
+    // set min/max bound on value
+    GridAutoScaler.prototype.boundValue = function (value, min, max) {
+        value = Math.max(value, min);
+        return (typeof max === "number" ? Math.min(value, max) : value);
+    };
     Object.defineProperty(GridAutoScaler.prototype, "ScalingUp", {
         get: function () { return (this.__launchingWorkers !== null); },
         enumerable: true,
@@ -79,6 +87,7 @@ var GridAutoScaler = (function (_super) {
     Object.defineProperty(GridAutoScaler.prototype, "MaxWorkersCap", {
         get: function () { return this.__MaxWorkersCap; },
         set: function (newValue) {
+            newValue = this.boundValue(newValue, GridAutoScaler.MIN_MAX_WORKERS_CAP);
             if (newValue !== this.__MaxWorkersCap) {
                 this.__MaxWorkersCap = newValue;
                 this.emit('change');
@@ -95,8 +104,33 @@ var GridAutoScaler = (function (_super) {
     Object.defineProperty(GridAutoScaler.prototype, "MinWorkersCap", {
         get: function () { return this.__MinWorkersCap; },
         set: function (newValue) {
+            newValue = this.boundValue(newValue, GridAutoScaler.MIN_MIN_WORKERS_CAP);
             if (newValue !== this.__MinWorkersCap) {
                 this.__MinWorkersCap = newValue;
+                this.emit('change');
+            }
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(GridAutoScaler.prototype, "TerminateWorkerAfterMinutesIdle", {
+        get: function () { return this.__TerminateWorkerAfterMinutesIdle; },
+        set: function (newValue) {
+            newValue = this.boundValue(newValue, GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE);
+            if (newValue !== this.__TerminateWorkerAfterMinutesIdle) {
+                this.__TerminateWorkerAfterMinutesIdle = newValue;
+                this.emit('change');
+            }
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(GridAutoScaler.prototype, "RampUpSpeedRatio", {
+        get: function () { return this.__RampUpSpeedRatio; },
+        set: function (newValue) {
+            newValue = this.boundValue(newValue, GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO, GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO);
+            if (newValue !== this.__RampUpSpeedRatio) {
+                this.__RampUpSpeedRatio = newValue;
                 this.emit('change');
             }
         },
@@ -210,12 +244,18 @@ var GridAutoScaler = (function (_super) {
     // compute to be terminated workers base on the current state of the grid and min. workers cap
     GridAutoScaler.prototype.computeAutoDownScalingWorkers = function (state) {
         var toBeTerminatedWorkers = [];
-        var maxTerminateCount = (this.HasMinWorkersCap ? Math.max(state.WorkerStates.length - this.MinWorkersCap, 0) : null);
+        var numWorkersNotTerminating = 0;
+        for (var i in state.WorkerStates) {
+            var ws = state.WorkerStates[i];
+            if (!ws.Terminating)
+                numWorkersNotTerminating++;
+        }
+        var maxTerminateCount = (this.HasMinWorkersCap ? Math.max(numWorkersNotTerminating - this.MinWorkersCap, 0) : null);
         for (var i in state.WorkerStates) {
             var ws = state.WorkerStates[i];
             if (!ws.Terminating && !ws.Busy && typeof ws.LastIdleTime === 'number') {
                 var elapseMS = state.CurrentTime - ws.LastIdleTime;
-                if (elapseMS > this.options.TerminateWorkerAfterMinutesIdle * 60 * 1000) {
+                if (elapseMS > this.__TerminateWorkerAfterMinutesIdle * 60 * 1000) {
                     if (maxTerminateCount === null || toBeTerminatedWorkers.length < maxTerminateCount)
                         toBeTerminatedWorkers.push(this.getWorkerFromState(ws));
                 }
@@ -229,15 +269,13 @@ var GridAutoScaler = (function (_super) {
         return new Promise(function (resolve, reject) {
             _this.implementation.EstimateWorkersLaunchRequest(state) // compute the number of additional workers desired
                 .then(function (launchRequest) {
-                var numWorkersToLaunch = 0;
+                var NumInstances = Math.max(Math.round(launchRequest.NumInstances * _this.__RampUpSpeedRatio), 1);
                 if (_this.HasMaxWorkersCap) {
                     var workersAllowance = Math.max(_this.MaxWorkersCap - state.WorkerStates.length, 0); // number of workers stlll allowed to be launched under the cap
-                    numWorkersToLaunch = Math.min(launchRequest.NumInstances, workersAllowance);
+                    NumInstances = Math.min(NumInstances, workersAllowance);
                 }
-                else
-                    numWorkersToLaunch = launchRequest.NumInstances;
-                if (numWorkersToLaunch > 0)
-                    resolve({ NumInstances: numWorkersToLaunch, Hint: launchRequest.Hint });
+                if (NumInstances > 0)
+                    resolve({ NumInstances: NumInstances, Hint: launchRequest.Hint });
                 else
                     resolve(null);
             }).catch(function (err) {
@@ -366,10 +404,10 @@ var GridAutoScaler = (function (_super) {
                 _this.emit('polling');
                 _this.AutoScalingPromise
                     .then(function (scalingTriggered) {
-                    setTimeout(_this.TimerFunction, _this.options.PollingIntervalMS);
+                    setTimeout(_this.TimerFunction, _this.__PollingIntervalMS);
                 }).catch(function (err) {
                     _this.emit('error', err);
-                    setTimeout(_this.TimerFunction, _this.options.PollingIntervalMS);
+                    setTimeout(_this.TimerFunction, _this.__PollingIntervalMS);
                 });
             };
             return func.bind(this);
@@ -395,4 +433,10 @@ var GridAutoScaler = (function (_super) {
     };
     return GridAutoScaler;
 }(events.EventEmitter));
+GridAutoScaler.MIN_POLLING_INTERVAL_MS = 500;
+GridAutoScaler.MIN_MAX_WORKERS_CAP = 1;
+GridAutoScaler.MIN_MIN_WORKERS_CAP = 0;
+GridAutoScaler.MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE = 1;
+GridAutoScaler.MIN_RAMP_UP_SPEED_RATIO = 0.0;
+GridAutoScaler.MAX_RAMP_UP_SPEED_RATIO = 1.0;
 exports.GridAutoScaler = GridAutoScaler;

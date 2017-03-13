@@ -8,16 +8,26 @@ export interface Options {
     MinWorkersCap?: number;
     PollingIntervalMS?: number;
     TerminateWorkerAfterMinutesIdle?: number;
+    RampUpSpeedRatio?: number;
 }
 export declare class GridAutoScaler extends events.EventEmitter {
     private scalableGrid;
     private implementation;
-    private options;
+    private __PollingIntervalMS;
     private __enabled;
     private __MaxWorkersCap;
     private __MinWorkersCap;
+    private __TerminateWorkerAfterMinutesIdle;
+    private __RampUpSpeedRatio;
     private __launchingWorkers;
+    private static MIN_POLLING_INTERVAL_MS;
+    private static MIN_MAX_WORKERS_CAP;
+    private static MIN_MIN_WORKERS_CAP;
+    private static MIN_TERMINATE_WORKER_AFTER_MINUTES_IDLE;
+    private static MIN_RAMP_UP_SPEED_RATIO;
+    private static MAX_RAMP_UP_SPEED_RATIO;
     constructor(scalableGrid: IAutoScalableGrid, implementation: IAutoScalerImplementation, options?: Options);
+    private boundValue(value, min, max?);
     readonly ScalingUp: boolean;
     readonly LaunchingWorkers: WorkerKey[];
     Enabled: boolean;
@@ -25,6 +35,8 @@ export declare class GridAutoScaler extends events.EventEmitter {
     MaxWorkersCap: number;
     readonly HasMinWorkersCap: boolean;
     MinWorkersCap: number;
+    TerminateWorkerAfterMinutesIdle: number;
+    RampUpSpeedRatio: number;
     private getWorkerFromState(state);
     private upScale(launchRequest);
     private downScale(toBeTerminatedWorkers);
