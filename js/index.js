@@ -385,10 +385,10 @@ var GridAutoScaler = (function (_super) {
                     var workers_1 = _this.LaunchingWorkers;
                     var launchedWorkers = [];
                     var timeoutWorkers = [];
+                    var nowTime = new Date().getTime();
                     for (var i in workers_1) {
                         var worker = workers_1[i];
                         var WorkerKey = worker.WorkerKey;
-                        var nowTime = new Date().getTime();
                         var LaunchingTime = worker.LaunchingTime;
                         var durationMS = nowTime - LaunchingTime;
                         if (currentWorkers[WorkerKey]) {

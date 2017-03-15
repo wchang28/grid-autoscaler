@@ -359,10 +359,10 @@ export class GridAutoScaler extends events.EventEmitter {
                     let workers = this.LaunchingWorkers;
                     let launchedWorkers : LaunchedWorker[] = [];
                     let timeoutWorkers : LaunchingWorker[] = [];
+                    let nowTime = new Date().getTime();
                     for (let i in workers) {    // check each launching worker
                         let worker = workers[i];
                         let WorkerKey = worker.WorkerKey;
-                        let nowTime = new Date().getTime();
                         let LaunchingTime = worker.LaunchingTime;
                         let durationMS = nowTime - LaunchingTime;
                         if (currentWorkers[WorkerKey]) {    // worker is indeed launched
