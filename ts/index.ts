@@ -361,7 +361,7 @@ export class GridAutoScaler extends events.EventEmitter {
                         if (currentWorkers[workerKey]) {    // worker is indeed launched
                             delete this.__launchingWorkers[workerKey];
                             launchedWorkers.push(worker);
-                        } else if (new Date().getTime() - worker.LaunchTime > 10 * 60 * 1000) { // TODO:
+                        } else if (new Date().getTime() - worker.LaunchTime > this.LaunchingTimeoutMinutes * 60 * 1000) {
                             delete this.__launchingWorkers[workerKey];
                             timeoutWorkers.push(worker);
                         }

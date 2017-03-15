@@ -388,7 +388,7 @@ var GridAutoScaler = (function (_super) {
                             delete _this.__launchingWorkers[workerKey];
                             launchedWorkers.push(worker);
                         }
-                        else if (new Date().getTime() - worker.LaunchTime > 10 * 60 * 1000) {
+                        else if (new Date().getTime() - worker.LaunchTime > _this.LaunchingTimeoutMinutes * 60 * 1000) {
                             delete _this.__launchingWorkers[workerKey];
                             timeoutWorkers.push(worker);
                         }
