@@ -1,6 +1,6 @@
 import * as events from "events";
 import * as _ from 'lodash';
-import {IWorker, IAutoScalableGrid, IAutoScalableState, IAutoScalerImplementation, WorkerKey, IWorkerState, IWorkersLaunchRequest, WorkerInstance, LaunchingWorker, IGridAutoScalerJSON} from 'autoscalable-grid';
+import {IWorker, IAutoScalableGrid, IAutoScalableState, IAutoScalerImplementation, WorkerKey, IWorkerState, IWorkersLaunchRequest, WorkerInstance, LaunchingWorker, TerminatingWorker, LaunchedWorker, IGridAutoScalerJSON} from 'autoscalable-grid';
 
 export interface Options {
     EnabledAtStart?: boolean;
@@ -33,10 +33,10 @@ interface TimerFunction {
 // 4. change
 // 5. down-scaling (workers: IWorker[])
 // 6. up-scaling (launchRequest IWorkersLaunchRequest)
-// 7. up-scaled (workerInstances: WorkerInstance[])
-// 8. down-scaled (workersIds: string[])
-// 9. workers-launched (launchedWorkers: WorkerInstance[])
-// 10. workers-launch-timeout (timeoutWorkers: WorkerInstance[])
+// 7. up-scaled (workers: LaunchingWorker[])
+// 8. down-scaled (terminatingWorkers: TerminatingWorker[])
+// 9. workers-launched (launchedWorker: LaunchedWorker[])
+// 10. workers-launch-timeout (timeoutWorkers: LaunchingWorker[])
 // 11. disabling-workers (workerIds:string[])
 // 12. set-workers-termination (workerIds:string[])
 export class GridAutoScaler extends events.EventEmitter {
@@ -157,17 +157,36 @@ export class GridAutoScaler extends events.EventEmitter {
         };
     }
 
-    private upScale(launchRequest: IWorkersLaunchRequest) : Promise<WorkerInstance[]> {
-        if (launchRequest && typeof launchRequest.NumInstances === "number" && launchRequest.NumInstances > 0) {
-            this.emit('up-scaling', launchRequest);
-            return this.implementation.LaunchInstances(launchRequest);
-        } else
-            return Promise.resolve<WorkerInstance[]>(null);
+    private upScale(launchRequest: IWorkersLaunchRequest) : Promise<LaunchingWorker[]> {
+        return new Promise<LaunchingWorker[]>((resolve:(value: LaunchingWorker[]) => void, reject: (err: any) => void) => {
+            if (launchRequest && typeof launchRequest.NumInstances === "number" && launchRequest.NumInstances > 0) {
+                this.emit('up-scaling', launchRequest);
+                this.implementation.LaunchInstances(launchRequest)
+                .then((workerInstances: WorkerInstance[]) => {
+                    if (workerInstances && workerInstances.length > 0) {
+                        let workers: LaunchingWorker[] = [];
+                        for (let i in workerInstances) {
+                            let workerInstance = workerInstances[i];
+                            let InstanceId = workerInstance.InstanceId;
+                            let WorkerKey = workerInstance.WorkerKey;
+                            let worker: LaunchingWorker = {WorkerKey, InstanceId, LaunchingTime: new Date().getTime()};
+                            workers.push(worker);
+                        }
+                        resolve(workers);
+                    }
+                    else
+                        resolve(null);
+                }).catch((err: any) => {
+                    reject(err);
+                });
+            } else
+                resolve(null);
+        });
     }
 
-    private downScale(toBeTerminatedWorkers: IWorker[]) : Promise<string[]> {
-        return new Promise<string[]>((resolve:(value: string[]) => void, reject: (err: any) => void) => {
-            let terminatingWorkerIds: string[] = null;
+    private downScale(toBeTerminatedWorkers: IWorker[]) : Promise<TerminatingWorker[]> {
+        return new Promise<TerminatingWorker[]>((resolve:(value: TerminatingWorker[]) => void, reject: (err: any) => void) => {
+            let terminatingWorkers: TerminatingWorker[] = null;
             if (toBeTerminatedWorkers && toBeTerminatedWorkers.length > 0) {
                 let keyToIdMapping: {[workerKey: string]: string} = {};
                 let workerIds:string[] = [];
@@ -186,68 +205,65 @@ export class GridAutoScaler extends events.EventEmitter {
                     return this.implementation.TerminateInstances(workerKeys);
                 }).then((workerInstances: WorkerInstance[]) => {
                     if (workerInstances && workerInstances.length > 0) {
-                        terminatingWorkerIds = [];
+                        let terminatingWorkerIds: string[] = [];
+                        terminatingWorkers = [];
                         for (let i in workerInstances) {
                             let workerInstance = workerInstances[i];
-                            let workerId = keyToIdMapping[workerInstance.WorkerKey];
+                            let InstanceId = workerInstance.InstanceId;
+                            let WorkerKey = workerInstance.WorkerKey;
+                            let workerId = keyToIdMapping[WorkerKey];
                             terminatingWorkerIds.push(workerId);
+                            terminatingWorkers.push({Id: workerId, WorkerKey, InstanceId});
                         }
                         this.emit('set-workers-termination', terminatingWorkerIds);
                         return this.scalableGrid.setWorkersTerminating(terminatingWorkerIds);
                     } else
                         return Promise.resolve<any>({});
                 }).then(() => {
-                    resolve(terminatingWorkerIds);
+                    resolve(terminatingWorkers);
                 }).catch((err: any) => {
                     reject(err);
                 })
             } else
-                resolve(terminatingWorkerIds);
+                resolve(terminatingWorkers);
         });
     }
 
-    private onUpScalingComplete(workerInstances: WorkerInstance[]) : boolean {
-        let triggered = false;
-        if (workerInstances != null && workerInstances.length > 0) {
+    private onUpScalingComplete(launchingWorker: LaunchingWorker[]) : LaunchingWorker[] {
+        if (launchingWorker != null && launchingWorker.length > 0) {
+            this.emit('up-scaled', launchingWorker);
             if (!this.__launchingWorkers) this.__launchingWorkers = {};
-            for (let i in workerInstances) {
-                let workerInstance = workerInstances[i];
-                let InstanceId = workerInstance.InstanceId;
-                let WorkerKey = workerInstance.WorkerKey;
-                this.__launchingWorkers[WorkerKey] = {WorkerKey, InstanceId, LaunchTime: new Date().getTime()};
+            for (let i in launchingWorker) {
+                let worker = launchingWorker[i];
+                let WorkerKey = worker.WorkerKey;
+                this.__launchingWorkers[WorkerKey] = worker;
             }
-            this.emit('up-scaled', workerInstances);
             this.emit('change');
-            triggered = true;
         }
-        return triggered;
+        return launchingWorker;
     }
 
-    private onDownScalingComplete(workersIds: string[]) : boolean {
-        let triggered = false;
-        if (workersIds != null && workersIds.length > 0) {
-            this.emit('down-scaled', workersIds);
-            triggered = true;
-        }
-        return triggered;
+    private onDownScalingComplete(terminatingWorkers: TerminatingWorker[]) : TerminatingWorker[] {
+        if (terminatingWorkers != null && terminatingWorkers.length > 0) this.emit('down-scaled', terminatingWorkers);
+        return terminatingWorkers;
     }
 
-    launchNewWorkers(launchRequest: IWorkersLaunchRequest) : Promise<boolean> {
-        return new Promise<boolean>((resolve:(value: boolean) => void, reject: (err: any) => void) => {
+    launchNewWorkers(launchRequest: IWorkersLaunchRequest) : Promise<LaunchingWorker[]> {
+        return new Promise<LaunchingWorker[]>((resolve:(value: LaunchingWorker[]) => void, reject: (err: any) => void) => {
             this.upScale(launchRequest)
-            .then((workerInstances: WorkerInstance[]) => {
-                resolve(this.onUpScalingComplete(workerInstances));
+            .then((lauchingWorkers: LaunchingWorker[]) => {
+                resolve(this.onUpScalingComplete(lauchingWorkers));
             }).catch((err: any) => {
                 reject(err);
             });
         });
     }
 
-    terminateWorkers(workers: IWorker[]) : Promise<boolean> {
-        return new Promise<boolean>((resolve:(value: boolean) => void, reject: (err: any) => void) => {
+    terminateWorkers(workers: IWorker[]) : Promise<TerminatingWorker[]> {
+        return new Promise<TerminatingWorker[]>((resolve:(value: TerminatingWorker[]) => void, reject: (err: any) => void) => {
             this.downScale(workers)
-            .then((workersIds: string[]) => {
-                resolve(this.onDownScalingComplete(workersIds));
+            .then((terminatingWorkers: TerminatingWorker[]) => {
+                resolve(this.onDownScalingComplete(terminatingWorkers));
             }).catch((err: any) => {
                 reject(err);
             });
@@ -296,38 +312,26 @@ export class GridAutoScaler extends events.EventEmitter {
         });
     }
 
-    private autoDownScaling(state: IAutoScalableState) : Promise<string[]> {
-        return new Promise<string[]>((resolve:(value: string[]) => void, reject: (err: any) => void) => {
+    private autoDownScaling(state: IAutoScalableState) : Promise<TerminatingWorker[]> {
+        return new Promise<TerminatingWorker[]>((resolve:(value: TerminatingWorker[]) => void, reject: (err: any) => void) => {
             this.computeAutoDownScalingWorkers(state)
             .then((workers: IWorker[]) => {
-                if (workers && workers.length > 0) {
-                    this.downScale(workers)
-                    .then((workerIds: string[]) => {
-                        resolve(workerIds);
-                    }).catch((err: any) => {
-                        reject(err);
-                    })
-                } else  // nothing to terminate
-                    resolve(null);
+                return (workers && workers.length > 0 ? this.downScale(workers) : Promise.resolve<TerminatingWorker[]>(null));
+            }).then((terminatingWorkers: TerminatingWorker[]) => {
+                resolve(terminatingWorkers);
             }).catch((err: any) => {
                 reject(err);
             })
         });
     }
 
-    private autoUpScaling(state: IAutoScalableState) : Promise<WorkerInstance[]> {
-        return new Promise<WorkerInstance[]>((resolve:(value: WorkerInstance[]) => void, reject: (err: any) => void) => {
+    private autoUpScaling(state: IAutoScalableState) : Promise<LaunchingWorker[]> {
+        return new Promise<LaunchingWorker[]>((resolve:(value: LaunchingWorker[]) => void, reject: (err: any) => void) => {
             this.computeAutoUpScalingLaunchRequest(state)
             .then((launchRequest: IWorkersLaunchRequest) => {
-                if (launchRequest) {
-                    this.upScale(launchRequest)
-                    .then((workerInstances: WorkerInstance[]) => {
-                        resolve(workerInstances);
-                    }).catch((err: any) => {
-                        reject(err);
-                    })
-                } else // nothing to launch
-                    resolve(null);
+                return (launchRequest ? this.upScale(launchRequest) : Promise.resolve<LaunchingWorker[]>(null));
+            }).then((launchingWorkers: LaunchingWorker[]) => {
+                resolve(launchingWorkers);
             }).catch((err: any) => {
                 reject(err);
             });
@@ -346,23 +350,28 @@ export class GridAutoScaler extends events.EventEmitter {
             }
             this.implementation.TranslateToWorkerKeys(workers)
             .then((workerKeys: WorkerKey[]) => {
-                let currentWorkers: {[workerKey: string] : boolean} = {};
+                let currentWorkers: {[workerKey: string] : string} = {};
                 for (let i in workerKeys) {
                     let workerKey = workerKeys[i];
-                    currentWorkers[workerKey] = true;
+                    currentWorkers[workerKey] = workers[i].Id;
                 }
                 if (this.__launchingWorkers) {  // there are launching workers
                     let workers = this.LaunchingWorkers;
-                    let launchedWorkers : WorkerInstance[] = [];
-                    let timeoutWorkers : WorkerInstance[] = [];
+                    let launchedWorkers : LaunchedWorker[] = [];
+                    let timeoutWorkers : LaunchingWorker[] = [];
                     for (let i in workers) {    // check each launching worker
                         let worker = workers[i];
-                        let workerKey = worker.WorkerKey;
-                        if (currentWorkers[workerKey]) {    // worker is indeed launched
-                            delete this.__launchingWorkers[workerKey];
-                            launchedWorkers.push(worker);
-                        } else if (new Date().getTime() - worker.LaunchTime > this.LaunchingTimeoutMinutes * 60 * 1000) {
-                            delete this.__launchingWorkers[workerKey];
+                        let WorkerKey = worker.WorkerKey;
+                        let nowTime = new Date().getTime();
+                        let LaunchingTime = worker.LaunchingTime;
+                        let durationMS = nowTime - LaunchingTime;
+                        if (currentWorkers[WorkerKey]) {    // worker is indeed launched
+                            delete this.__launchingWorkers[WorkerKey];
+                            let workerId = currentWorkers[WorkerKey];
+                            let LaunchedTime = nowTime;
+                            launchedWorkers.push({Id: workerId, WorkerKey, InstanceId: worker.InstanceId, LaunchingTime, LaunchedTime, LaunchDurationMS: durationMS});
+                        } else if (durationMS > this.LaunchingTimeoutMinutes * 60 * 1000) {    // worker launch timeout
+                            delete this.__launchingWorkers[WorkerKey];
                             timeoutWorkers.push(worker);
                         }
                     }
@@ -378,8 +387,8 @@ export class GridAutoScaler extends events.EventEmitter {
         });
     }
 
-    private get AutoScalingPromise() : Promise<boolean> {
-        return new Promise<boolean>((resolve:(value: boolean) => void, reject: (err: any) => void) => {
+    private get AutoScalingPromise() : Promise<[TerminatingWorker[], LaunchingWorker[]]> {
+        return new Promise<[TerminatingWorker[], LaunchingWorker[]]>((resolve:(value: [TerminatingWorker[], LaunchingWorker[]]) => void, reject: (err: any) => void) => {
             let state: IAutoScalableState = null;
             this.scalableGrid.getCurrentState()  // get the current state of the scalable
             .then((st: IAutoScalableState) => {
@@ -387,16 +396,15 @@ export class GridAutoScaler extends events.EventEmitter {
                 this.emit('scalable-state', state);
                 return this.feedLastestWorkerStates(state.WorkerStates);
             }).then(() => {
-                let autoDownScalingPromise: Promise<string[]> = Promise.resolve<string[]>(null);
-                let autoUpScalingPromise: Promise<WorkerInstance[]> = Promise.resolve<WorkerInstance[]>(null);
+                let autoDownScalingPromise: Promise<TerminatingWorker[]> = Promise.resolve<TerminatingWorker[]>(null);
+                let autoUpScalingPromise: Promise<LaunchingWorker[]> = Promise.resolve<LaunchingWorker[]>(null);
                 if (this.Enabled && !this.ScalingUp) {  // auto-scaling enabled and currently not performing up-scaling
                     if (this.satisfyAutoDownScalingCondition(state)) autoDownScalingPromise = this.autoDownScaling(state);
                     if (this.satisfyAutoUpScalingCondition(state)) autoUpScalingPromise = this.autoUpScaling(state);
                 }
                 return Promise.all([autoDownScalingPromise, autoUpScalingPromise]);
-            }).then((value: [string[], WorkerInstance[]]) => {
-                let triggered = (this.onDownScalingComplete(value[0]) || this.onUpScalingComplete(value[1]));
-                resolve(triggered);
+            }).then((value: [TerminatingWorker[], LaunchingWorker[]]) => {
+                resolve(value);
             }).catch((err: any) => {
                 reject(err);
             });
@@ -407,7 +415,7 @@ export class GridAutoScaler extends events.EventEmitter {
         let func = () => {
             this.emit('polling');
             this.AutoScalingPromise
-            .then((scalingTriggered: boolean) => {
+            .then((value: [TerminatingWorker[], LaunchingWorker[]]) => {
                 setTimeout(this.TimerFunction, this.__PollingIntervalMS);
             }).catch((err:any) => {
                 this.emit('error', err);

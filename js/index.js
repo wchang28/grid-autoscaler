@@ -22,10 +22,10 @@ var defaultOptions = {
 // 4. change
 // 5. down-scaling (workers: IWorker[])
 // 6. up-scaling (launchRequest IWorkersLaunchRequest)
-// 7. up-scaled (workerInstances: WorkerInstance[])
-// 8. down-scaled (workersIds: string[])
-// 9. workers-launched (launchedWorkers: WorkerInstance[])
-// 10. workers-launch-timeout (timeoutWorkers: WorkerInstance[])
+// 7. up-scaled (workers: LaunchingWorker[])
+// 8. down-scaled (terminatingWorkers: TerminatingWorker[])
+// 9. workers-launched (launchedWorker: LaunchedWorker[])
+// 10. workers-launch-timeout (timeoutWorkers: LaunchingWorker[])
 // 11. disabling-workers (workerIds:string[])
 // 12. set-workers-termination (workerIds:string[])
 var GridAutoScaler = (function (_super) {
@@ -181,17 +181,37 @@ var GridAutoScaler = (function (_super) {
         };
     };
     GridAutoScaler.prototype.upScale = function (launchRequest) {
-        if (launchRequest && typeof launchRequest.NumInstances === "number" && launchRequest.NumInstances > 0) {
-            this.emit('up-scaling', launchRequest);
-            return this.implementation.LaunchInstances(launchRequest);
-        }
-        else
-            return Promise.resolve(null);
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (launchRequest && typeof launchRequest.NumInstances === "number" && launchRequest.NumInstances > 0) {
+                _this.emit('up-scaling', launchRequest);
+                _this.implementation.LaunchInstances(launchRequest)
+                    .then(function (workerInstances) {
+                    if (workerInstances && workerInstances.length > 0) {
+                        var workers = [];
+                        for (var i in workerInstances) {
+                            var workerInstance = workerInstances[i];
+                            var InstanceId = workerInstance.InstanceId;
+                            var WorkerKey = workerInstance.WorkerKey;
+                            var worker = { WorkerKey: WorkerKey, InstanceId: InstanceId, LaunchingTime: new Date().getTime() };
+                            workers.push(worker);
+                        }
+                        resolve(workers);
+                    }
+                    else
+                        resolve(null);
+                }).catch(function (err) {
+                    reject(err);
+                });
+            }
+            else
+                resolve(null);
+        });
     };
     GridAutoScaler.prototype.downScale = function (toBeTerminatedWorkers) {
         var _this = this;
         return new Promise(function (resolve, reject) {
-            var terminatingWorkerIds = null;
+            var terminatingWorkers = null;
             if (toBeTerminatedWorkers && toBeTerminatedWorkers.length > 0) {
                 var keyToIdMapping_1 = {};
                 var workerIds = [];
@@ -210,11 +230,15 @@ var GridAutoScaler = (function (_super) {
                     return _this.implementation.TerminateInstances(workerKeys);
                 }).then(function (workerInstances) {
                     if (workerInstances && workerInstances.length > 0) {
-                        terminatingWorkerIds = [];
+                        var terminatingWorkerIds = [];
+                        terminatingWorkers = [];
                         for (var i in workerInstances) {
                             var workerInstance = workerInstances[i];
-                            var workerId = keyToIdMapping_1[workerInstance.WorkerKey];
+                            var InstanceId = workerInstance.InstanceId;
+                            var WorkerKey = workerInstance.WorkerKey;
+                            var workerId = keyToIdMapping_1[WorkerKey];
                             terminatingWorkerIds.push(workerId);
+                            terminatingWorkers.push({ Id: workerId, WorkerKey: WorkerKey, InstanceId: InstanceId });
                         }
                         _this.emit('set-workers-termination', terminatingWorkerIds);
                         return _this.scalableGrid.setWorkersTerminating(terminatingWorkerIds);
@@ -222,46 +246,40 @@ var GridAutoScaler = (function (_super) {
                     else
                         return Promise.resolve({});
                 }).then(function () {
-                    resolve(terminatingWorkerIds);
+                    resolve(terminatingWorkers);
                 }).catch(function (err) {
                     reject(err);
                 });
             }
             else
-                resolve(terminatingWorkerIds);
+                resolve(terminatingWorkers);
         });
     };
-    GridAutoScaler.prototype.onUpScalingComplete = function (workerInstances) {
-        var triggered = false;
-        if (workerInstances != null && workerInstances.length > 0) {
+    GridAutoScaler.prototype.onUpScalingComplete = function (launchingWorker) {
+        if (launchingWorker != null && launchingWorker.length > 0) {
+            this.emit('up-scaled', launchingWorker);
             if (!this.__launchingWorkers)
                 this.__launchingWorkers = {};
-            for (var i in workerInstances) {
-                var workerInstance = workerInstances[i];
-                var InstanceId = workerInstance.InstanceId;
-                var WorkerKey = workerInstance.WorkerKey;
-                this.__launchingWorkers[WorkerKey] = { WorkerKey: WorkerKey, InstanceId: InstanceId, LaunchTime: new Date().getTime() };
+            for (var i in launchingWorker) {
+                var worker = launchingWorker[i];
+                var WorkerKey = worker.WorkerKey;
+                this.__launchingWorkers[WorkerKey] = worker;
             }
-            this.emit('up-scaled', workerInstances);
             this.emit('change');
-            triggered = true;
         }
-        return triggered;
+        return launchingWorker;
     };
-    GridAutoScaler.prototype.onDownScalingComplete = function (workersIds) {
-        var triggered = false;
-        if (workersIds != null && workersIds.length > 0) {
-            this.emit('down-scaled', workersIds);
-            triggered = true;
-        }
-        return triggered;
+    GridAutoScaler.prototype.onDownScalingComplete = function (terminatingWorkers) {
+        if (terminatingWorkers != null && terminatingWorkers.length > 0)
+            this.emit('down-scaled', terminatingWorkers);
+        return terminatingWorkers;
     };
     GridAutoScaler.prototype.launchNewWorkers = function (launchRequest) {
         var _this = this;
         return new Promise(function (resolve, reject) {
             _this.upScale(launchRequest)
-                .then(function (workerInstances) {
-                resolve(_this.onUpScalingComplete(workerInstances));
+                .then(function (lauchingWorkers) {
+                resolve(_this.onUpScalingComplete(lauchingWorkers));
             }).catch(function (err) {
                 reject(err);
             });
@@ -271,8 +289,8 @@ var GridAutoScaler = (function (_super) {
         var _this = this;
         return new Promise(function (resolve, reject) {
             _this.downScale(workers)
-                .then(function (workersIds) {
-                resolve(_this.onDownScalingComplete(workersIds));
+                .then(function (terminatingWorkers) {
+                resolve(_this.onDownScalingComplete(terminatingWorkers));
             }).catch(function (err) {
                 reject(err);
             });
@@ -325,16 +343,9 @@ var GridAutoScaler = (function (_super) {
         return new Promise(function (resolve, reject) {
             _this.computeAutoDownScalingWorkers(state)
                 .then(function (workers) {
-                if (workers && workers.length > 0) {
-                    _this.downScale(workers)
-                        .then(function (workerIds) {
-                        resolve(workerIds);
-                    }).catch(function (err) {
-                        reject(err);
-                    });
-                }
-                else
-                    resolve(null);
+                return (workers && workers.length > 0 ? _this.downScale(workers) : Promise.resolve(null));
+            }).then(function (terminatingWorkers) {
+                resolve(terminatingWorkers);
             }).catch(function (err) {
                 reject(err);
             });
@@ -345,16 +356,9 @@ var GridAutoScaler = (function (_super) {
         return new Promise(function (resolve, reject) {
             _this.computeAutoUpScalingLaunchRequest(state)
                 .then(function (launchRequest) {
-                if (launchRequest) {
-                    _this.upScale(launchRequest)
-                        .then(function (workerInstances) {
-                        resolve(workerInstances);
-                    }).catch(function (err) {
-                        reject(err);
-                    });
-                }
-                else
-                    resolve(null);
+                return (launchRequest ? _this.upScale(launchRequest) : Promise.resolve(null));
+            }).then(function (launchingWorkers) {
+                resolve(launchingWorkers);
             }).catch(function (err) {
                 reject(err);
             });
@@ -375,7 +379,7 @@ var GridAutoScaler = (function (_super) {
                 var currentWorkers = {};
                 for (var i in workerKeys) {
                     var workerKey = workerKeys[i];
-                    currentWorkers[workerKey] = true;
+                    currentWorkers[workerKey] = workers[i].Id;
                 }
                 if (_this.__launchingWorkers) {
                     var workers_1 = _this.LaunchingWorkers;
@@ -383,13 +387,18 @@ var GridAutoScaler = (function (_super) {
                     var timeoutWorkers = [];
                     for (var i in workers_1) {
                         var worker = workers_1[i];
-                        var workerKey = worker.WorkerKey;
-                        if (currentWorkers[workerKey]) {
-                            delete _this.__launchingWorkers[workerKey];
-                            launchedWorkers.push(worker);
+                        var WorkerKey = worker.WorkerKey;
+                        var nowTime = new Date().getTime();
+                        var LaunchingTime = worker.LaunchingTime;
+                        var durationMS = nowTime - LaunchingTime;
+                        if (currentWorkers[WorkerKey]) {
+                            delete _this.__launchingWorkers[WorkerKey];
+                            var workerId = currentWorkers[WorkerKey];
+                            var LaunchedTime = nowTime;
+                            launchedWorkers.push({ Id: workerId, WorkerKey: WorkerKey, InstanceId: worker.InstanceId, LaunchingTime: LaunchingTime, LaunchedTime: LaunchedTime, LaunchDurationMS: durationMS });
                         }
-                        else if (new Date().getTime() - worker.LaunchTime > _this.LaunchingTimeoutMinutes * 60 * 1000) {
-                            delete _this.__launchingWorkers[workerKey];
+                        else if (durationMS > _this.LaunchingTimeoutMinutes * 60 * 1000) {
+                            delete _this.__launchingWorkers[WorkerKey];
                             timeoutWorkers.push(worker);
                         }
                     }
@@ -429,8 +438,7 @@ var GridAutoScaler = (function (_super) {
                     }
                     return Promise.all([autoDownScalingPromise, autoUpScalingPromise]);
                 }).then(function (value) {
-                    var triggered = (_this.onDownScalingComplete(value[0]) || _this.onUpScalingComplete(value[1]));
-                    resolve(triggered);
+                    resolve(value);
                 }).catch(function (err) {
                     reject(err);
                 });
@@ -445,7 +453,7 @@ var GridAutoScaler = (function (_super) {
             var func = function () {
                 _this.emit('polling');
                 _this.AutoScalingPromise
-                    .then(function (scalingTriggered) {
+                    .then(function (value) {
                     setTimeout(_this.TimerFunction, _this.__PollingIntervalMS);
                 }).catch(function (err) {
                     _this.emit('error', err);

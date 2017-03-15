@@ -1,7 +1,7 @@
 /// <reference types="node" />
 /// <reference types="es6-promise" />
 import * as events from "events";
-import { IWorker, IAutoScalableGrid, IAutoScalerImplementation, IWorkersLaunchRequest, LaunchingWorker, IGridAutoScalerJSON } from 'autoscalable-grid';
+import { IWorker, IAutoScalableGrid, IAutoScalerImplementation, IWorkersLaunchRequest, LaunchingWorker, TerminatingWorker, IGridAutoScalerJSON } from 'autoscalable-grid';
 export interface Options {
     EnabledAtStart?: boolean;
     MaxWorkersCap?: number;
@@ -46,10 +46,10 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private getWorkerFromState(state);
     private upScale(launchRequest);
     private downScale(toBeTerminatedWorkers);
-    private onUpScalingComplete(workerInstances);
-    private onDownScalingComplete(workersIds);
-    launchNewWorkers(launchRequest: IWorkersLaunchRequest): Promise<boolean>;
-    terminateWorkers(workers: IWorker[]): Promise<boolean>;
+    private onUpScalingComplete(launchingWorker);
+    private onDownScalingComplete(terminatingWorkers);
+    launchNewWorkers(launchRequest: IWorkersLaunchRequest): Promise<LaunchingWorker[]>;
+    terminateWorkers(workers: IWorker[]): Promise<TerminatingWorker[]>;
     private computeAutoDownScalingWorkers(state);
     private computeAutoUpScalingLaunchRequest(state);
     private autoDownScaling(state);
