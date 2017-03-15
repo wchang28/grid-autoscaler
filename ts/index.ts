@@ -33,9 +33,9 @@ interface TimerFunction {
 // 4. change
 // 5. down-scaling (workers: IWorker[])
 // 6. up-scaling (launchRequest IWorkersLaunchRequest)
-// 7. up-scaled (workers: LaunchingWorker[])
+// 7. up-scaled (launchingWorkers: LaunchingWorker[])
 // 8. down-scaled (terminatingWorkers: TerminatingWorker[])
-// 9. workers-launched (launchedWorker: LaunchedWorker[])
+// 9. workers-launched (launchedWorkers: LaunchedWorker[])
 // 10. workers-launch-timeout (timeoutWorkers: LaunchingWorker[])
 // 11. disabling-workers (workerIds:string[])
 // 12. set-workers-termination (workerIds:string[])
@@ -318,7 +318,7 @@ export class GridAutoScaler extends events.EventEmitter {
             .then((workers: IWorker[]) => {
                 return (workers && workers.length > 0 ? this.downScale(workers) : Promise.resolve<TerminatingWorker[]>(null));
             }).then((terminatingWorkers: TerminatingWorker[]) => {
-                resolve(terminatingWorkers);
+                resolve(this.onDownScalingComplete(terminatingWorkers));
             }).catch((err: any) => {
                 reject(err);
             })
@@ -331,7 +331,7 @@ export class GridAutoScaler extends events.EventEmitter {
             .then((launchRequest: IWorkersLaunchRequest) => {
                 return (launchRequest ? this.upScale(launchRequest) : Promise.resolve<LaunchingWorker[]>(null));
             }).then((launchingWorkers: LaunchingWorker[]) => {
-                resolve(launchingWorkers);
+                resolve(this.onUpScalingComplete(launchingWorkers));
             }).catch((err: any) => {
                 reject(err);
             });

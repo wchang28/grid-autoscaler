@@ -22,9 +22,9 @@ var defaultOptions = {
 // 4. change
 // 5. down-scaling (workers: IWorker[])
 // 6. up-scaling (launchRequest IWorkersLaunchRequest)
-// 7. up-scaled (workers: LaunchingWorker[])
+// 7. up-scaled (launchingWorkers: LaunchingWorker[])
 // 8. down-scaled (terminatingWorkers: TerminatingWorker[])
-// 9. workers-launched (launchedWorker: LaunchedWorker[])
+// 9. workers-launched (launchedWorkers: LaunchedWorker[])
 // 10. workers-launch-timeout (timeoutWorkers: LaunchingWorker[])
 // 11. disabling-workers (workerIds:string[])
 // 12. set-workers-termination (workerIds:string[])
@@ -345,7 +345,7 @@ var GridAutoScaler = (function (_super) {
                 .then(function (workers) {
                 return (workers && workers.length > 0 ? _this.downScale(workers) : Promise.resolve(null));
             }).then(function (terminatingWorkers) {
-                resolve(terminatingWorkers);
+                resolve(_this.onDownScalingComplete(terminatingWorkers));
             }).catch(function (err) {
                 reject(err);
             });
@@ -358,7 +358,7 @@ var GridAutoScaler = (function (_super) {
                 .then(function (launchRequest) {
                 return (launchRequest ? _this.upScale(launchRequest) : Promise.resolve(null));
             }).then(function (launchingWorkers) {
-                resolve(launchingWorkers);
+                resolve(_this.onUpScalingComplete(launchingWorkers));
             }).catch(function (err) {
                 reject(err);
             });
