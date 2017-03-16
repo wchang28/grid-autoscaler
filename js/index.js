@@ -465,8 +465,8 @@ var GridAutoScaler = (function (_super) {
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(GridAutoScaler.prototype, "ImplementationConfigUrl", {
-        get: function () { return this.implementation.getConfigUrl(); },
+    Object.defineProperty(GridAutoScaler.prototype, "ImplementationInfo", {
+        get: function () { return this.implementation.getInfo(); },
         enumerable: true,
         configurable: true
     });

@@ -1,6 +1,6 @@
 import * as events from "events";
 import * as _ from 'lodash';
-import {IWorker, IAutoScalableGrid, IAutoScalableState, IAutoScalerImplementation, WorkerKey, IWorkerState, IWorkersLaunchRequest, WorkerInstance, LaunchingWorker, TerminatingWorker, LaunchedWorker, IGridAutoScalerJSON} from 'autoscalable-grid';
+import {IWorker, IAutoScalableGrid, IAutoScalableState, IAutoScalerImplementation, WorkerKey, IWorkerState, IWorkersLaunchRequest, WorkerInstance, LaunchingWorker, TerminatingWorker, LaunchedWorker, IGridAutoScalerJSON, AutoScalerImplementationInfo} from 'autoscalable-grid';
 
 export interface Options {
     EnabledAtStart?: boolean;
@@ -425,7 +425,7 @@ export class GridAutoScaler extends events.EventEmitter {
         return func.bind(this);
     }
 
-    get ImplementationConfigUrl(): Promise<string> {return this.implementation.getConfigUrl();}
+    get ImplementationInfo(): Promise<AutoScalerImplementationInfo> {return this.implementation.getInfo();}
 
     toJSON() : IGridAutoScalerJSON {
         return {

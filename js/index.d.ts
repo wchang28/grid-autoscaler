@@ -1,7 +1,7 @@
 /// <reference types="node" />
 /// <reference types="es6-promise" />
 import * as events from "events";
-import { IWorker, IAutoScalableGrid, IAutoScalerImplementation, IWorkersLaunchRequest, LaunchingWorker, TerminatingWorker, IGridAutoScalerJSON } from 'autoscalable-grid';
+import { IWorker, IAutoScalableGrid, IAutoScalerImplementation, IWorkersLaunchRequest, LaunchingWorker, TerminatingWorker, IGridAutoScalerJSON, AutoScalerImplementationInfo } from 'autoscalable-grid';
 export interface Options {
     EnabledAtStart?: boolean;
     MaxWorkersCap?: number;
@@ -59,6 +59,6 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private feedLastestWorkerStates(workerStates);
     private readonly AutoScalingPromise;
     private readonly TimerFunction;
-    readonly ImplementationConfigUrl: Promise<string>;
+    readonly ImplementationInfo: Promise<AutoScalerImplementationInfo>;
     toJSON(): IGridAutoScalerJSON;
 }
