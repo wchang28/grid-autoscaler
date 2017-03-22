@@ -1,5 +1,4 @@
 /// <reference types="node" />
-/// <reference types="es6-promise" />
 import * as events from "events";
 import { IWorker, IAutoScalableGrid, IAutoScalerImplementation, IWorkersLaunchRequest, LaunchingWorker, TerminatingWorker, IGridAutoScalerJSON, AutoScalerImplementationInfo } from 'autoscalable-grid';
 export interface Options {
