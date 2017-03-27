@@ -37,7 +37,7 @@ interface TimerFunction {
 // 8. down-scaled (terminatingWorkers: TerminatingWorker[])
 // 9. workers-launched (launchedWorkers: LaunchedWorker[])
 // 10. workers-launch-timeout (timeoutWorkers: LaunchingWorker[])
-// 11. disabling-workers (workerIds:string[])
+// 11. request-to-terminate-workers (workerIds:string[])
 // 12. set-workers-termination (workerIds:string[])
 export class GridAutoScaler extends events.EventEmitter {
     private __PollingIntervalMS: number;
@@ -184,25 +184,42 @@ export class GridAutoScaler extends events.EventEmitter {
         });
     }
 
-    private downScale(toBeTerminatedWorkers: IWorker[]) : Promise<TerminatingWorker[]> {
+    private downScale(workers: IWorker[]) : Promise<TerminatingWorker[]> {
         return new Promise<TerminatingWorker[]>((resolve:(value: TerminatingWorker[]) => void, reject: (err: any) => void) => {
             let terminatingWorkers: TerminatingWorker[] = null;
-            if (toBeTerminatedWorkers && toBeTerminatedWorkers.length > 0) {
+            if (workers && workers.length > 0) {
+                let toBeTerminatedWorkers: IWorker[] = null;
+                let mapWorkerIdToWorker: {[workerId: string]: IWorker} = {};
                 let keyToIdMapping: {[workerKey: string]: string} = {};
                 let workerIds:string[] = [];
-                for (let i in toBeTerminatedWorkers)
-                    workerIds.push(toBeTerminatedWorkers[i].Id);
-                this.emit('disabling-workers', workerIds);
-                this.scalableGrid.disableWorkers(workerIds) // disable the workers first
-                .then(() => {
-                    return this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers) // translate to worker keys
+                for (let i in workers) {
+                    let worker = workers[i];
+                    let workerId = worker.Id;
+                    workerIds.push(workerId);
+                    mapWorkerIdToWorker[workerId] = worker;
+                }
+                this.emit('request-to-terminate-workers', workerIds);
+                this.scalableGrid.requestToTerminateWorkers(workerIds) // request to terminate the workers first
+                .then((okToBeTerminatedWorkerIds: string[]) => {
+                    if (okToBeTerminatedWorkerIds && okToBeTerminatedWorkerIds.length > 0) {
+                        toBeTerminatedWorkers = [];
+                        for (let i in okToBeTerminatedWorkerIds) {
+                            let workerId = okToBeTerminatedWorkerIds[i];
+                            toBeTerminatedWorkers.push(mapWorkerIdToWorker[workerId]);
+                        }
+                        return this.implementation.TranslateToWorkerKeys(toBeTerminatedWorkers) // translate workers to worker keys
+                    } else
+                        return Promise.resolve<WorkerKey[]>(null);
                 }).then((workerKeys: WorkerKey[]) => {
-                    for (let i in workerKeys) {
-                        let workerKey = workerKeys[i];
-                        keyToIdMapping[workerKey] = toBeTerminatedWorkers[i].Id;
-                    }
-                    this.emit('down-scaling', toBeTerminatedWorkers);
-                    return this.implementation.TerminateInstances(workerKeys);
+                    if (workerKeys && workerKeys.length > 0) {
+                        for (let i in workerKeys) {
+                            let workerKey = workerKeys[i];
+                            keyToIdMapping[workerKey] = toBeTerminatedWorkers[i].Id;
+                        }
+                        this.emit('down-scaling', toBeTerminatedWorkers);
+                        return this.implementation.TerminateInstances(workerKeys);
+                    } else
+                        return Promise.resolve<WorkerInstance[]>(null);
                 }).then((workerInstances: WorkerInstance[]) => {
                     if (workerInstances && workerInstances.length > 0) {
                         let terminatingWorkerIds: string[] = [];

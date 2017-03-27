@@ -44,7 +44,7 @@ export declare class GridAutoScaler extends events.EventEmitter {
     RampUpSpeedRatio: number;
     private getWorkerFromState(state);
     private upScale(launchRequest);
-    private downScale(toBeTerminatedWorkers);
+    private downScale(workers);
     private onUpScalingComplete(launchingWorker);
     private onDownScalingComplete(terminatingWorkers);
     launchNewWorkers(launchRequest: IWorkersLaunchRequest): Promise<LaunchingWorker[]>;
