@@ -311,6 +311,7 @@ export class GridAutoScaler extends events.EventEmitter {
                                 launchingWorkers.push(launchingWorker);
                                 delete this.__launchingWorkers[workerKey];
                             }
+                            if (_.isEmpty(this.__launchingWorkers)) this.__launchingWorkers = null;
                             this.emit('change');
                             resolve(launchingWorkers);
                         } else

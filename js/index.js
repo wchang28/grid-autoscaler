@@ -346,6 +346,8 @@ var GridAutoScaler = (function (_super) {
                                 launchingWorkers.push(launchingWorker);
                                 delete _this.__launchingWorkers[workerKey];
                             }
+                            if (_.isEmpty(_this.__launchingWorkers))
+                                _this.__launchingWorkers = null;
                             _this.emit('change');
                             resolve(launchingWorkers);
                         }
