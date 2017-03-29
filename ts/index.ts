@@ -265,6 +265,7 @@ export class GridAutoScaler extends events.EventEmitter {
         return terminatingWorkers;
     }
 
+    // launch new workers
     launchNewWorkers(launchRequest: IWorkersLaunchRequest) : Promise<LaunchingWorker[]> {
         return new Promise<LaunchingWorker[]>((resolve:(value: LaunchingWorker[]) => void, reject: (err: any) => void) => {
             this.upScale(launchRequest)
@@ -276,6 +277,7 @@ export class GridAutoScaler extends events.EventEmitter {
         });
     }
 
+    // terminate workers
     terminateWorkers(workers: IWorker[]) : Promise<TerminatingWorker[]> {
         return new Promise<TerminatingWorker[]>((resolve:(value: TerminatingWorker[]) => void, reject: (err: any) => void) => {
             this.downScale(workers)
@@ -284,6 +286,42 @@ export class GridAutoScaler extends events.EventEmitter {
             }).catch((err: any) => {
                 reject(err);
             });
+        });
+    }
+
+    // terminating workers in the launching state
+    terminateLaunchingWorkers(workerKeys: string[]) : Promise<LaunchingWorker[]> {
+        return new Promise<LaunchingWorker[]>((resolve:(value: LaunchingWorker[]) => void, reject: (err: any) => void) => {
+            if (workerKeys && workerKeys.length > 0) {
+                let keys: string[] = [];
+                for (let i in workerKeys) { // for each worker
+                    let workerKey = workerKeys[i];
+                    if (this.__launchingWorkers[workerKey]) // this is a launching worker
+                        keys.push(workerKey);
+                }
+                if (keys.length > 0) {
+                    this.implementation.TerminateInstances(keys)
+                    .then((workerInstances: WorkerInstance[]) => {
+                        if (workerInstances && workerInstances.length > 0) {
+                            let launchingWorkers: LaunchingWorker[] = [];
+                            for (let i in workerInstances) {
+                                let instance = workerInstances[i];
+                                let workerKey = instance.WorkerKey;
+                                let launchingWorker = this.__launchingWorkers[workerKey];
+                                launchingWorkers.push(launchingWorker);
+                                delete this.__launchingWorkers[workerKey];
+                            }
+                            this.emit('change');
+                            resolve(launchingWorkers);
+                        } else
+                            resolve(null);
+                    }).catch((err: any) => {
+                        reject(err);
+                    })
+                } else
+                    resolve(null);
+            } else
+                resolve(null);
         });
     }
 

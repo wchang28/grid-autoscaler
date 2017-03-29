@@ -299,6 +299,7 @@ var GridAutoScaler = (function (_super) {
             this.emit('down-scaled', terminatingWorkers);
         return terminatingWorkers;
     };
+    // launch new workers
     GridAutoScaler.prototype.launchNewWorkers = function (launchRequest) {
         var _this = this;
         return new Promise(function (resolve, reject) {
@@ -310,6 +311,7 @@ var GridAutoScaler = (function (_super) {
             });
         });
     };
+    // terminate workers
     GridAutoScaler.prototype.terminateWorkers = function (workers) {
         var _this = this;
         return new Promise(function (resolve, reject) {
@@ -319,6 +321,45 @@ var GridAutoScaler = (function (_super) {
             }).catch(function (err) {
                 reject(err);
             });
+        });
+    };
+    // terminating workers in the launching state
+    GridAutoScaler.prototype.terminateLaunchingWorkers = function (workerKeys) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            if (workerKeys && workerKeys.length > 0) {
+                var keys = [];
+                for (var i in workerKeys) {
+                    var workerKey = workerKeys[i];
+                    if (_this.__launchingWorkers[workerKey])
+                        keys.push(workerKey);
+                }
+                if (keys.length > 0) {
+                    _this.implementation.TerminateInstances(keys)
+                        .then(function (workerInstances) {
+                        if (workerInstances && workerInstances.length > 0) {
+                            var launchingWorkers = [];
+                            for (var i in workerInstances) {
+                                var instance = workerInstances[i];
+                                var workerKey = instance.WorkerKey;
+                                var launchingWorker = _this.__launchingWorkers[workerKey];
+                                launchingWorkers.push(launchingWorker);
+                                delete _this.__launchingWorkers[workerKey];
+                            }
+                            _this.emit('change');
+                            resolve(launchingWorkers);
+                        }
+                        else
+                            resolve(null);
+                    }).catch(function (err) {
+                        reject(err);
+                    });
+                }
+                else
+                    resolve(null);
+            }
+            else
+                resolve(null);
         });
     };
     // compute to be terminated workers base on the current state of the grid and min. workers cap

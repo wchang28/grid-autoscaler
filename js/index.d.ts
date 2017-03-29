@@ -49,6 +49,7 @@ export declare class GridAutoScaler extends events.EventEmitter {
     private onDownScalingComplete(terminatingWorkers);
     launchNewWorkers(launchRequest: IWorkersLaunchRequest): Promise<LaunchingWorker[]>;
     terminateWorkers(workers: IWorker[]): Promise<TerminatingWorker[]>;
+    terminateLaunchingWorkers(workerKeys: string[]): Promise<LaunchingWorker[]>;
     private computeAutoDownScalingWorkers(state);
     private computeAutoUpScalingLaunchRequest(state);
     private autoDownScaling(state);
