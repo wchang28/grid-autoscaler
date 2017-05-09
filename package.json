@@ -1,6 +1,6 @@
 {
   "name": "grid-autoscaler",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Grid Autoscaler Library and Interfaces",
   "main": "./js/index.js",
   "typings": "./js/index.d.ts",
@@ -16,10 +16,9 @@
   "author": "Wen Chang",
   "license": "MIT",
   "dependencies": {
-    "@types/es6-promise": "0.0.32",
-    "@types/lodash": "^4.14.36",
-    "@types/node": "^6.0.41",
+    "@types/lodash": "^4.14.64",
+    "@types/node": "^6.0.73",
     "autoscalable-grid": "git+https://github.com/wchang28/autoscalable-grid.git",
-    "lodash": "^4.14.2"
+    "lodash": "^4.17.4"
   }
 }
